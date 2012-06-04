@@ -3,33 +3,23 @@
  No rights, expressed or implied, whatsoever to this software are provided by Motorola Mobility, Inc. hereunder.<br/>
  (c) Copyright 2011 Motorola Mobility, Inc.  All Rights Reserved.
  </copyright> */
-/*global require,exports,describe,beforeEach,it,expect,waitsFor,runs */
+/*global require,exports,describe,beforeEach,it,expect,waits,waitsFor,runs */
 var Montage = require("montage").Montage,
     Localizer = require("montage/core/localizer"),
+    Promise = require("montage/core/promise").Promise,
     Deserializer = require("montage/core/deserializer").Deserializer;
 
 describe("core/localizer-spec", function() {
-
-    function testDeserializer(object, callback) {
-        var deserializer = Deserializer.create(),
-            objects, latch;
-
-        deserializer._require = require;
-        deserializer.initWithObject(object).deserialize(function(objs) {
-            latch = true;
-            objects = objs;
-        });
-
-        waitsFor(function() { return latch; });
-        runs(function() {
-            callback(objects);
-        });
-    }
 
     describe("Localizer", function(){
         var l;
         beforeEach(function() {
             l = Localizer.Localizer.create().init("en");
+        });
+
+        it("can be created with a foreign language code", function() {
+            var l = Localizer.Localizer.create().init("no");
+            expect(l.messageFormat).not.toBe(null);
         });
 
         describe("locale", function() {
@@ -62,6 +52,16 @@ describe("core/localizer-spec", function() {
             });
         });
 
+        describe("hasMessages", function() {
+            it("is false after creation", function() {
+                expect(l.hasMessages).toBe(false);
+            });
+            it("is true when messages is set", function() {
+                l.messages = {hello: "Hello"};
+                expect(l.hasMessages).toBe(true);
+            });
+        });
+
         describe("localize", function() {
             beforeEach(function() {
                 l.messages = {
@@ -81,8 +81,10 @@ describe("core/localizer-spec", function() {
                 };
             });
 
-            it("returns a string for simple messages", function() {
-                expect(l.localize("love you")).toBe("Jeg elsker deg");
+            it("returns a function with toString for simple messages", function() {
+                var x = l.localize("love you");
+                expect(x()).toBe("Jeg elsker deg");
+                expect("" + x).toBe("Jeg elsker deg");
             });
             it("returns a function if it takes variables", function() {
                 var fn = l.localize("hello_name");
@@ -100,7 +102,7 @@ describe("core/localizer-spec", function() {
                 expect(fn({name: "Ingrid"})).toBe("Hei Ingrid!");
             });
             it("uses the default if the key does not exist", function() {
-                expect(l.localize("missing", "Missing key")).toBe("Missing key");
+                expect(l.localize("missing", "Missing key")()).toBe("Missing key");
             });
             it("returns null if the key does not exist and no fallback is given", function() {
                 expect(l.localize("missing")).toBe(null);
@@ -113,6 +115,48 @@ describe("core/localizer-spec", function() {
                     threw = true;
                 }
                 expect(threw).toBe(true);
+            });
+        });
+
+        describe("loadMessages", function() {
+            it("fails when package.json has no manifest", function() {
+                return require.loadPackage(module.directory + "localizer/no-package-manifest/", {}).then(function(r){
+                    l.require = r;
+                    return l.loadMessages();
+                }).then(function() {
+                    return Promise.reject("expected messages not to load");
+                }, function(err) {
+                    return void 0;
+                });
+            });
+            it("fails when package has no manifest.json", function() {
+                return require.loadPackage(module.directory + "localizer/no-manifest/", {}).then(function(r){
+                    l.require = r;
+                    return l.loadMessages();
+                }).then(function() {
+                    return Promise.reject("expected messages not to load");
+                }, function(err) {
+                    return void 0;
+                });
+            });
+            it("fails when package has no manifest.json", function() {
+                return require.loadPackage(module.directory + "localizer/no-manifest-files/", {}).then(function(r){
+                    l.require = r;
+                    return l.loadMessages();
+                }).then(function() {
+                    return Promise.reject("expected messages not to load");
+                }, function(err) {
+                    return void 0;
+                });
+            });
+
+            it("can load a simple messages.json", function() {
+                return require.loadPackage(module.directory + "localizer/simple/", {}).then(function(r){
+                    l.require = r;
+                    return l.loadMessages();
+                }).then(function(messages) {
+                    expect(messages.hello).toBe("Hello, World!");
+                });
             });
         });
     });
@@ -132,167 +176,18 @@ describe("core/localizer-spec", function() {
                 expect(window.localStorage.getItem("montage_locale")).toBe("en-x-test");
             });
         });
-    });
 
-    describe("serialization", function() {
-        describe("localization unit", function() {
-            it("requires a key", function() {
-                testDeserializer({
-                    test: {
-                        prototype: "montage/ui/dynamic-text.reel",
-                        properties: {
-                            defaultValue: "fail"
-                        },
-                        localizations: {
-                            value: {
-                                "_default": "Hello"
-                            }
-                        }
-                    }
-                }, function(objects) {
-                    var test = objects.test;
-                    expect(test.value).not.toBe("Hello");
-                });
+        describe("localize", function() {
+            it("returns the message function when locale resources have loaded (callback)", function() {
+                // return Localizer.defaultLocalizer.localizeAsync("hello", "fail", function(fn) {
+                //     expect(fn()).toBe("Hello");
+                // }).then(function(){});
+                // empty then to work with Jasmine
             });
-
-            it("localizes a string", function() {
-                testDeserializer({
-                    test: {
-                        prototype: "montage/ui/dynamic-text.reel",
-                        localizations: {
-                            value: {
-                                "_": "hello",
-                                "_default": "Hello"
-                            }
-                        }
-                    }
-                }, function(objects) {
-                    var test = objects.test;
-                    expect(test.value).toBe("Hello");
-                });
-            });
-
-            it("creates a binding from the localizer to the object", function() {
-                testDeserializer({
-                    input: {
-                        prototype: "montage",
-                        properties: {
-                            "thing": "World"
-                        }
-                    },
-
-                    test: {
-                        prototype: "montage/ui/dynamic-text.reel",
-                        properties: {
-                            defaultValue: "fail"
-                        },
-                        localizations: {
-                            value: {
-                                "_": "hello_thing",
-                                "_default": "Hello {thing}",
-                                "thing": "@input.thing"
-                            }
-                        }
-                    }
-                }, function(objects) {
-                    var test = objects.test;
-                    expect(test.value).toBe("Hello World");
-                    expect(test._bindingDescriptors.value).toBeDefined();
-                });
-            });
-
-            it("accepts variables for the localization", function() {
-                testDeserializer({
-                    input: {
-                        prototype: "montage",
-                        properties: {
-                            "thing": "World"
-                        }
-                    },
-
-                    test: {
-                        prototype: "montage/ui/dynamic-text.reel",
-                        properties: {
-                            defaultValue: "fail"
-                        },
-                        localizations: {
-                            value: {
-                                "_": "hello_thing",
-                                "_default": "Hello {thing}",
-                                "thing": "@input.thing"
-                            }
-                        }
-                    }
-                }, function(objects) {
-                    var test = objects.test;
-                    expect(test.value).toBe("Hello World");
-                    objects.input.thing = "Earth";
-                    expect(test.value).toBe("Hello Earth");
-                });
-            });
-        });
-
-        describe("localizer localizeObjects", function() {
-            it("only works on the localizer", function() {
-                testDeserializer({
-                    other: {
-                        value: {x: "pass"}
-                    },
-                    localizer: {
-                        prototype: "montage/core/converter/converter",
-                        localizeObjects: [
-                            {
-                                object: {"@": "other"},
-                                "properties": {
-                                    x: "fail"
-                                }
-                            }
-                        ]
-                    }
-                }, function(objects) {
-                    expect(objects.other.x).toBe("pass");
-                });
-            });
-
-            it("can set properties on any object", function() {
-                testDeserializer({
-                    other: {
-                        value: {x: "fail"}
-                    },
-                    localizer: {
-                        object: "montage/core/localizer",
-                        localizeObjects: [
-                            {
-                                object: {"@": "other"},
-                                "properties": {
-                                    x: "pass"
-                                }
-                            }
-                        ]
-                    }
-                }, function(objects) {
-                    expect(objects.other.x).toBe("pass");
-                });
-            });
-            it("uses the existing property value as a key", function() {
-                testDeserializer({
-                    other: {
-                        value: {x: "pass"}
-                    },
-                    localizer: {
-                        object: "montage/core/localizer",
-                        localizeObjects: [
-                            {
-                                object: {"@": "other"},
-                                "properties": {
-                                    x: true
-                                }
-                            }
-                        ]
-                    }
-                }, function(objects) {
-                    expect(objects.other.x).toBe("pass");
-                });
+            it("returns the message function when locale resources have loaded (promise)", function() {
+                // return Localizer.defaultLocalizer.localizeAsync("hello", "fail").then(function(fn) {
+                //     expect(fn()).toBe("Hello");
+                // });
             });
         });
     });
