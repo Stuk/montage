@@ -25,7 +25,7 @@ var KEY_KEY = "_",
     LOCALE_STORAGE_KEY = "montage_locale",
 
     // directory name that the locales are stored under
-    LOCALES_DIRECTORY = "locales",
+    LOCALES_DIRECTORY = "locale",
     // filename (without extension) on the file that contains the messages
     MESSAGES_FILENAME = "messages";
 
@@ -101,8 +101,8 @@ var Localizer = exports.Localizer = Montage.create(Montage, /** @lends module:mo
         value: null
     },
     /**
-
-        @type {Object} A map from keys to messages.
+        A map from keys to messages.
+        @type Object
         @default null
     */
     messages: {
@@ -120,6 +120,14 @@ var Localizer = exports.Localizer = Montage.create(Montage, /** @lends module:mo
                 this.hasMessages = !!value;
             }
         }
+    },
+    /**
+        A promise for the messages property
+        @type Promise
+        @default null
+    */
+    messagesPromise: {
+        value: null
     },
 
     _locale: {
@@ -165,73 +173,140 @@ var Localizer = exports.Localizer = Montage.create(Montage, /** @lends module:mo
         value: (typeof global !== "undefined") ? global.require : (typeof window !== "undefined") ? window.require : null
     },
 
+    /**
+        Load messages for the locale
+        @function
+        @param {Number|Boolean} [timeout=5000] Number of milliseconds to wait before failing. Set to false for no timeout.
+        @param {Function} [callback] Called on successful loading of messages. Using the returned promise is recomended.
+        @returns {Promise} A promise for the messages.
+    */
     loadMessages: {
-        value: function(callback) {
+        value: function(timeout, callback) {
             if (!this.require) {
                 throw new Error("Cannot load messages as", this, "require is not set");
             }
 
+            if (timeout === null) {
+                timeout = 5000;
+            }
             this.messages = null;
 
             var self = this;
             var messageRequire = this.require;
+            var promise;
 
-            return messageRequire.async("package.json").then(function(pkg) {
-                if (pkg.manifest === true) {
-                    return messageRequire.async("manifest.json");
-                } else {
-                    return Promise.reject("Package has no manifest. "+messageRequire.location+"package.json must contain \"manifest\": true and "+messageRequire.location+"manifest.json must exist");
-                }
-            }).get("files").then(function(files) {
-                if (!files) {
-                    return Promise.reject(messageRequire.location+"manifest.json does not contain a 'files' property");
-                }
+            if (messageRequire.packageDescription.manifest === true) {
+                promise = messageRequire.async("manifest.json");
+            } else {
+                promise = Promise.reject("Package has no manifest. "+messageRequire.location+"package.json must contain \"manifest\": true and "+messageRequire.location+"manifest.json must exist");
+            }
 
-                var locales, localesMessagesP = [];
+            if (timeout) {
+                promise = promise.timeout(timeout);
+            }
 
-                if (!(LOCALES_DIRECTORY in files)) {
-                    return Promise.reject("Package does not contain a '" + LOCALES_DIRECTORY + "' directory");
-                }
+            return this.messagesPromise = promise.get("files").then(function(files) {
+                return self._loadMessageFiles(files);
 
-                locales = files[LOCALES_DIRECTORY].files;
-                // TODO: fallback through the locale tags and check for the
-                // existence of each
-                for (var locale in locales) {
-                    var filename;
-                    if ((filename = MESSAGES_FILENAME + ".js") in locales[locale].files) {}
-                    else if ((filename = MESSAGES_FILENAME + ".json") in locales[locale].files) {}
-                    else {
-                        // missing messages file
-                        if(logger.isDebug) {
-                            logger.debug("Warning: '" + LOCALES_DIRECTORY + "/" + locale + "/' does not contain '" + MESSAGES_FILENAME + ".json' or '" + MESSAGES_FILENAME + ".js'");
-                        }
-                        continue;
-                    }
-
-                    localesMessagesP.push(messageRequire.async(LOCALES_DIRECTORY + "/" + locale + "/" + filename));
-                }
-                return Promise.all(localesMessagesP);
             }).then(function(localesMessages) {
-                var messages = {};
-                // collapse the messages into one object, earlier locales
-                // taking precedence over later ones.
-                for (var i = 0, len = localesMessages.length; i < len; i++) {
-                    var localeMessages = localesMessages[i];
-                    for (var key in localeMessages) {
-                        if (!(key in messages)) {
-                            messages[key] = localeMessages[key];
-                        }
-                    }
-                }
-                self.messages = messages;
+                return self._collapseMessages(localesMessages);
+
+            }, function(reason, error, rejection) {
+                console.error("Could not load messages for '" + self.locale + "': " + reason);
+                return rejection;
+
+            }).then(function(messages) {
                 if (typeof callback === "function") {
                     callback(messages);
                 }
                 return messages;
-            }, function(reason, error, rejection) {
-                console.error("Could not load messages for '" + self.locale + "': " + reason);
-                return rejection;
+
             });
+        }
+    },
+
+    /**
+        Load the locale appropriate message files from the given manifest
+        structure.
+        @private
+        @function
+        @param {Object} files An object mapping directory (locale) names to
+        @returns {Promise} A promise that will be resolved with an array
+        containing the content of message files appropriate to this locale.
+        Suitable for passing into {@link _collapseMessages}.
+    */
+    _loadMessageFiles: {
+        value: function(files) {
+            var messageRequire = this.require;
+
+            if (!files) {
+                return Promise.reject(messageRequire.location+"manifest.json does not contain a 'files' property");
+            }
+
+            var availableLocales, localesMessagesP = [], fallbackLocale, localeFiles, filename;
+
+            if (!(LOCALES_DIRECTORY in files)) {
+                return Promise.reject("Package does not contain a '" + LOCALES_DIRECTORY + "' directory");
+            }
+
+            availableLocales = files[LOCALES_DIRECTORY].files;
+            fallbackLocale = this._locale;
+
+            // Fallback through the language tags, loading any available
+            // message files
+            while (fallbackLocale !== "") {
+                if (availableLocales.hasOwnProperty(fallbackLocale)) {
+                    localeFiles = availableLocales[fallbackLocale].files;
+
+                    // Look for Javascript or JSON message files, with the
+                    // compiled JS files taking precedence
+                    if ((filename = MESSAGES_FILENAME + ".js") in localeFiles) {}
+                    else if ((filename = MESSAGES_FILENAME + ".json") in localeFiles) {}
+                    else {
+                        // missing messages file
+                        if(logger.isDebug) {
+                            logger.debug("Warning: '" + LOCALES_DIRECTORY + "/" + fallbackLocale + "/' does not contain '" + MESSAGES_FILENAME + ".json' or '" + MESSAGES_FILENAME + ".js'");
+                        }
+                        continue;
+                    }
+
+                    // Require the message file
+                    localesMessagesP.push(messageRequire.async(LOCALES_DIRECTORY + "/" + fallbackLocale + "/" + filename));
+                }
+                // Strip the last language tag off of the locale
+                fallbackLocale = fallbackLocale.substring(0, fallbackLocale.lastIndexOf("-"));
+            }
+
+            return Promise.all(localesMessagesP);
+        }
+    },
+
+    /**
+        Collapse an array of message objects into one, earlier elements taking
+        precedence over later ones.
+        @private
+        @function
+        @param {Array[Object]} localesMessages
+        @returns {Object} An object mapping messages keys to the messages
+        @example <code>[{hi: "Good-day"}, {hi: "Hello", bye: "Bye"}]</code>
+        results in <code>{hi: "Good-day", bye: "Bye"}</code>
+    */
+    _collapseMessages: {
+        value: function(localesMessages) {
+            var messages = {};
+
+            // Go through each set of messages, adding any keys that haven't
+            // already been set
+            for (var i = 0, len = localesMessages.length; i < len; i++) {
+                var localeMessages = localesMessages[i];
+                for (var key in localeMessages) {
+                    if (!(key in messages)) {
+                        messages[key] = localeMessages[key];
+                    }
+                }
+            }
+            this.messages = messages;
+            return messages;
         }
     },
 
@@ -278,13 +353,9 @@ var z = hi();
     */
     localize: {
         value: function(key, defaultMessage) {
-            if (!this.hasMessages) {
-                throw new Error("Localizer for '" + this.locale + "' has no messages");
-            }
-
             var message, type, compiled;
 
-            if (key in this._messages) {
+            if (this._messages && key in this._messages) {
                 message = this._messages[key];
                 type = typeof message;
 
@@ -302,7 +373,9 @@ var z = hi();
             }
 
             if (!message) {
-                return null;
+                console.error("No message or default message for key '"+ key +"'");
+                // Give back something so there's at least something for the UI
+                message = key;
             }
 
             if (message in this._compiledMessageCache) {
@@ -328,33 +401,41 @@ var z = hi();
     /**
         <p>Async version of {@link localize}.</p>
 
-        <p>Waits for the localizer to get messages (hasMessages === true) before
-        localizing the key. Use either the callback or the promise.</p>
+        <p>Waits for the localizer to get messages before localizing the key.
+        Use either the callback or the promise.</p>
 
         @function
         @param {String} key The key to the string in the {@link messages} object.
         @param {String} defaultMessage The value to use if key does not exist.
+        @param {String} [defaultOnFail=true] Whether to use the default messages if the messages fail to load.
         @param {Function} [callback] Passed the message function.
         @returns {Promise} A promise that is resolved with the message function.
     */
     localizeAsync: {
-        value: function(key, defaultMessage, callback) {
+        value: function(key, defaultMessage, defaultOnFail, callback) {
             var listener, deferred, promise, self = this;
-            if (this.hasMessages) {
+            defaultOnFail = (defaultOnFail === null) ? true : defaultOnFail;
+
+            if (!this.messagesPromise) {
                 promise = Promise.resolve(this.localize(key, defaultMessage));
                 promise.then(callback);
                 return promise;
             }
 
-            deferred = Promise.defer();
-            listener = function() {
-                deferred.resolve(self.localize(key, defaultMessage));
-                deferred.promise.then(callback);
-                self.removePropertyChangeListener("hasMessages", listener);
+            var l = function() {
+                var messageFn = self.localize(key, defaultMessage);
+                if (typeof callback === "function") {
+                    callback(messageFn);
+                }
+                return messageFn;
             };
 
-            this.addPropertyChangeListener("hasMessages", listener);
-            return deferred.promise;
+            if (defaultOnFail) {
+                // Try and localize the message, no matter what the outcome
+                return this.messagesPromise.then(l, l);
+            } else {
+                return this.messagesPromise.then(l);
+            }
         }
     }
 
@@ -574,11 +655,41 @@ var MessageLocalizer = exports.MessageLocalizer = Montage.create(Montage, /** @l
     }
 });
 
+var createMessageBinding = function(object, prop, variables, deserializer, messageFunction) {
+    if (!messageFunction) {
+        throw new Error("messageFunction required");
+    }
+
+    // if the messageFunction has its own toString property, then it is a
+    // simple string and there's no point creating and bindings
+    if (messageFunction.hasOwnProperty("toString")) {
+        object[prop] = messageFunction();
+        return;
+    }
+
+    var messageLocalizer = MessageLocalizer.create().init(messageFunction, variables);
+
+    for (var variable in variables) {
+        var targetPath = variables[variable];
+        var binding = {};
+        var dotIndex = targetPath.indexOf(".");
+        binding.boundObject = deserializer.getObjectByLabel(targetPath.slice(1, dotIndex));
+        binding.boundObjectPropertyPath = targetPath.slice(dotIndex+1);
+        binding.oneway = true;
+        Object.defineBinding(messageLocalizer.variables, variable, binding);
+    }
+
+    Object.defineBinding(object, prop, {
+        boundObject: messageLocalizer,
+        boundObjectPropertyPath: "value",
+        oneway: true
+    });
+};
+
 Deserializer.defineDeserializationUnit("localizations", function(object, properties, deserializer) {
     for (var prop in properties) {
         var desc = properties[prop],
             key,
-            messageFunction,
             defaultMessage,
             variables;
 
@@ -595,36 +706,10 @@ Deserializer.defineDeserializationUnit("localizations", function(object, propert
         defaultMessage = desc[DEFAULT_MESSAGE_KEY];
         delete desc[DEFAULT_MESSAGE_KEY];
 
-        // only set variables here once KEY_KEY and DEFAULT_MESSAGE_KEY have been removed
-        variables = Object.keys(desc);
-
-        defaultLocalizer.localizeAsync(key, defaultMessage).then(function(messageFunction) {
-            // if the messageFunction has its own toString property, then it is a
-            // simple string and there's no point creating and bindings
-            if (messageFunction.hasOwnProperty("toString")) {
-                object[prop] = messageFunction();
-                return;
-            }
-
-            var messageLocalizer = MessageLocalizer.create().init(messageFunction, variables);
-
-            for (var i = 0, len = variables.length; i < len; i++) {
-                var variable = variables[i];
-
-                var targetPath = desc[variable];
-                var binding = {};
-                var dotIndex = targetPath.indexOf(".");
-                binding.boundObject = deserializer.getObjectByLabel(targetPath.slice(1, dotIndex));
-                binding.boundObjectPropertyPath = targetPath.slice(dotIndex+1);
-                binding.oneway = true;
-                Object.defineBinding(messageLocalizer.variables, variable, binding);
-            }
-
-            Object.defineBinding(object, prop, {
-                boundObject: messageLocalizer,
-                boundObjectPropertyPath: "value",
-                oneway: true
+        (function(prop, variables, key) {
+            defaultLocalizer.localizeAsync(key, defaultMessage).then(function(messageFunction) {
+                createMessageBinding(object, prop, variables, deserializer, messageFunction);
             });
-        });
+        }(prop, desc, key));
     }
 });

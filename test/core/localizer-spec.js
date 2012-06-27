@@ -104,8 +104,8 @@ describe("core/localizer-spec", function() {
             it("uses the default if the key does not exist", function() {
                 expect(l.localize("missing", "Missing key")()).toBe("Missing key");
             });
-            it("returns null if the key does not exist and no fallback is given", function() {
-                expect(l.localize("missing")).toBe(null);
+            it("returns the key if the key does not exist and no fallback is given", function() {
+                expect(l.localize("missing")()).toBe("missing");
             });
             it("throws if the message object does not contain a 'message' property", function() {
                 var threw = false;
@@ -150,12 +150,60 @@ describe("core/localizer-spec", function() {
                 });
             });
 
-            it("can load a simple messages.json", function() {
+            it("can load a simple messages.json (promise)", function() {
                 return require.loadPackage(module.directory + "localizer/simple/", {}).then(function(r){
                     l.require = r;
                     return l.loadMessages();
                 }).then(function(messages) {
                     expect(messages.hello).toBe("Hello, World!");
+                });
+            });
+
+            it("can load a simple messages.json (callback)", function() {
+                var deferred = Promise.defer();
+                require.loadPackage(module.directory + "localizer/simple/", {}).then(function(r){
+                    l.require = r;
+                    l.loadMessages(null, function(messages) {
+                        expect(messages.hello).toBe("Hello, World!");
+                        deferred.resolve();
+                    });
+                });
+                return deferred.promise;
+            });
+
+            it("has a timeout", function() {
+                return require.loadPackage(module.directory + "localizer/simple/", {}).then(function(r){
+                    l.require = r;
+                    return l.loadMessages(1);
+                }).then(function() {
+                    return Promise.reject("expected a timeout");
+                }, function(err) {
+                    return void 0;
+                });
+            });
+
+            it("loads non-English messages", function() {
+                var l = Localizer.Localizer.create().init("no");
+                return require.loadPackage(module.directory + "localizer/fallback/", {}).then(function(r){
+                    l.require = r;
+                    return l.loadMessages();
+                }).then(function(messages) {
+                    expect(messages.hello).toBe("Hei");
+                });
+
+            });
+
+            it("loads the fallback messages", function() {
+                var l = Localizer.Localizer.create().init("no-x-compiled");
+                return require.loadPackage(module.directory + "localizer/fallback/", {}).then(function(r){
+                    l.require = r;
+                    return l.loadMessages();
+                }).then(function(messages) {
+                    expect(messages.hello).toBe("Hei");
+                    expect(typeof messages.welcome).toBe("function");
+                    var num_albums = l.localize("num_albums");
+                    expect(num_albums({albums: 1})).toBe("1 fotoalbum");
+                    expect(num_albums({albums: 4})).toBe("4 fotoalbuma");
                 });
             });
         });
