@@ -1,15 +1,42 @@
 /* <copyright>
- This file contains proprietary software owned by Motorola Mobility, Inc.<br/>
- No rights, expressed or implied, whatsoever to this software are provided by Motorola Mobility, Inc. hereunder.<br/>
- (c) Copyright 2012 Motorola Mobility, Inc.  All Rights Reserved.
- </copyright> */
+Copyright (c) 2012, Motorola Mobility LLC.
+All Rights Reserved.
+
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are met:
+
+* Redistributions of source code must retain the above copyright notice,
+  this list of conditions and the following disclaimer.
+
+* Redistributions in binary form must reproduce the above copyright notice,
+  this list of conditions and the following disclaimer in the documentation
+  and/or other materials provided with the distribution.
+
+* Neither the name of Motorola Mobility LLC nor the names of its
+  contributors may be used to endorse or promote products derived from this
+  software without specific prior written permission.
+
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
+LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+POSSIBILITY OF SUCH DAMAGE.
+</copyright> */
 /*global require,exports */
 /**
     @module montage/core/localizer
     @requires montage/core/core
-    @requires montage/core/messageformat
     @requires montage/core/logger
     @requires montage/core/deserializer
+    @requires montage/core/promise
+    @requires montage/core/messageformat
+    @requires montage/core/messageformat-locale
 */
 var Montage = require("montage").Montage,
     MessageFormat = require("core/messageformat"),
@@ -26,8 +53,10 @@ var KEY_KEY = "_",
 
     // directory name that the locales are stored under
     LOCALES_DIRECTORY = "locale",
-    // filename (without extension) on the file that contains the messages
-    MESSAGES_FILENAME = "messages";
+    // filename (without extension) of the file that contains the messages
+    MESSAGES_FILENAME = "messages",
+    // filename of the manifest file
+    MANIFEST_FILENAME = "manifest.json";
 
 // This is not a strict match for the grammar in http://tools.ietf.org/html/rfc5646,
 // but it's good enough for our purposes.
@@ -82,20 +111,6 @@ var Localizer = exports.Localizer = Montage.create(Montage, /** @lends module:mo
         value: null
     },
 
-    /**
-        <p>Whether there are messages available to be used by {@link localize}.</p>
-
-        <p>Initially this is false. If messages is set or loadMessages completes
-        it is set to true. If the locale is changed or messages is set to null
-        it is set back to false.</p>
-
-        @type {Boolean}
-        @default false
-    */
-    hasMessages: {
-        value: false
-    },
-
     _messages: {
         enumerable: false,
         value: null
@@ -117,7 +132,6 @@ var Localizer = exports.Localizer = Montage.create(Montage, /** @lends module:mo
                 }
 
                 this._messages = value;
-                this.hasMessages = !!value;
             }
         }
     },
@@ -158,19 +172,81 @@ var Localizer = exports.Localizer = Montage.create(Montage, /** @lends module:mo
         }
     },
 
+    _availableLocales: {
+        value: null
+    },
     /**
-        <p>The require function to use in {@link loadMessages}</p>
+        A promise for the locales available in this package. Resolves to an
+        array of strings, each containing a locale tag.
+        @type Promise
+        @default null
+    */
+    availableLocales: {
+        get: function() {
+            if (this._availableLocales) {
+                return this._availableLocales;
+            }
 
-        <p>By default this is set to the global require, meaning that messages
+            return this._availableLocales = this._manifest.get("files").get(LOCALES_DIRECTORY).get("files").then(function(locales) {
+                return Object.keys(locales);
+            });
+        }
+    },
+
+    _require: {
+        value: (typeof global !== "undefined") ? global.require : (typeof window !== "undefined") ? window.require : null
+    },
+    /**
+        The require function to use in {@link loadMessages}.
+
+        By default this is set to the global require, meaning that messages
         will be loaded from the root of the application. To load messages
         from the root of your package set this to the require function from
-        any class in the package.</p>
+        any class in the package.
 
-        @type {Function}
+        @type Function
         @default global require | null
     */
     require: {
-        value: (typeof global !== "undefined") ? global.require : (typeof window !== "undefined") ? window.require : null
+        get: function() {
+            return this._require;
+        },
+        set: function(value) {
+            if (this._require !== value) {
+                this.__manifest = null;
+                this._require = value;
+            }
+        }
+    },
+
+    __manifest: {
+        value: null
+    },
+    /**
+        Promise for the manifest
+        @private
+        @type Promise
+        @default null
+    */
+    _manifest: {
+        depends: ["require"],
+        get: function() {
+            var messageRequire = this.require;
+
+            if (messageRequire.packageDescription.manifest === true) {
+                if (this.__manifest) {
+                    return this.__manifest;
+                } else {
+                    return this.__manifest = messageRequire.async(MANIFEST_FILENAME);
+                }
+            } else {
+                return Promise.reject(new Error(
+                    "Package has no manifest. " + messageRequire.location +
+                    "package.json must contain \"manifest\": true and " +
+                    messageRequire.location+MANIFEST_FILENAME+" must exist"
+                ));
+            }
+        }
     },
 
     /**
@@ -193,13 +269,7 @@ var Localizer = exports.Localizer = Montage.create(Montage, /** @lends module:mo
 
             var self = this;
             var messageRequire = this.require;
-            var promise;
-
-            if (messageRequire.packageDescription.manifest === true) {
-                promise = messageRequire.async("manifest.json");
-            } else {
-                promise = Promise.reject("Package has no manifest. "+messageRequire.location+"package.json must contain \"manifest\": true and "+messageRequire.location+"manifest.json must exist");
-            }
+            var promise = this._manifest;
 
             if (timeout) {
                 promise = promise.timeout(timeout);
@@ -240,7 +310,10 @@ var Localizer = exports.Localizer = Montage.create(Montage, /** @lends module:mo
             var messageRequire = this.require;
 
             if (!files) {
-                return Promise.reject(messageRequire.location+"manifest.json does not contain a 'files' property");
+                return Promise.reject(new Error(
+                    messageRequire.location + MANIFEST_FILENAME +
+                    " does not contain a 'files' property"
+                ));
             }
 
             var availableLocales, localesMessagesP = [], fallbackLocale, localeFiles, filename;
@@ -265,7 +338,7 @@ var Localizer = exports.Localizer = Montage.create(Montage, /** @lends module:mo
                     else {
                         // missing messages file
                         if(logger.isDebug) {
-                            logger.debug("Warning: '" + LOCALES_DIRECTORY + "/" + fallbackLocale + "/' does not contain '" + MESSAGES_FILENAME + ".json' or '" + MESSAGES_FILENAME + ".js'");
+                            logger.debug(this, "Warning: '" + LOCALES_DIRECTORY + "/" + fallbackLocale + "/' does not contain '" + MESSAGES_FILENAME + ".json' or '" + MESSAGES_FILENAME + ".js'");
                         }
                         continue;
                     }
@@ -277,7 +350,15 @@ var Localizer = exports.Localizer = Montage.create(Montage, /** @lends module:mo
                 fallbackLocale = fallbackLocale.substring(0, fallbackLocale.lastIndexOf("-"));
             }
 
-            return Promise.all(localesMessagesP);
+            var promise = Promise.all(localesMessagesP);
+            if (logger.isDebug) {
+                var self = this;
+                promise = promise.then(function(localesMessages) {
+                    logger.debug(self, "loaded " + localesMessages.length + " message files");
+                    return localesMessages;
+                });
+            }
+            return promise;
         }
     },
 
@@ -288,8 +369,10 @@ var Localizer = exports.Localizer = Montage.create(Montage, /** @lends module:mo
         @function
         @param {Array[Object]} localesMessages
         @returns {Object} An object mapping messages keys to the messages
-        @example <code>[{hi: "Good-day"}, {hi: "Hello", bye: "Bye"}]</code>
-        results in <code>{hi: "Good-day", bye: "Bye"}</code>
+        @example
+        [{hi: "Good-day"}, {hi: "Hello", bye: "Bye"}]
+        // results in
+        {hi: "Good-day", bye: "Bye"}
     */
     _collapseMessages: {
         value: function(localesMessages) {
@@ -441,20 +524,52 @@ var z = hi();
 
 });
 
-var DefaultLocalizer = Montage.create(Localizer, {
+/**
+    @class module:montage/core/localizer.DefaultLocalizer
+    @extends module:montage/core/localizer.Localizer
+*/
+var DefaultLocalizer = Montage.create(Localizer, /** @lends module:montage/core/localizer.DefaultLocalizer# */ {
     init: {
         value: function() {
-            var defaultLocale;
-            if (typeof window !== "undefined") {
+            var defaultLocale = this.callDelegateMethod("getDefaultLocale");
+
+            if (!defaultLocale && typeof window !== "undefined") {
                 if (window.localStorage) {
                     defaultLocale = window.localStorage.getItem(LOCALE_STORAGE_KEY);
                 }
                 defaultLocale = defaultLocale || window.navigator.userLanguage || window.navigator.language;
             }
+
             defaultLocale = defaultLocale || "en";
             this.locale = defaultLocale;
 
+            this.loadMessages();
+
             return this;
+        }
+    },
+
+    _delegate: {
+        enumerable: false,
+        value: null
+    },
+    /**
+        Delegate to get the default locale.
+
+        Should implement a <code>getDefaultLocale</code> method that returns
+        a language-tag string that can be passed to {@link locale}
+        @type Object
+        @default null
+    */
+    delegate: {
+        get: function() {
+            return this._delegate;
+        },
+        set: function(value) {
+            if (this._delegate !== value) {
+                this._delegate = value;
+                this.init();
+            }
         }
     },
 
@@ -472,21 +587,26 @@ var DefaultLocalizer = Montage.create(Localizer, {
         }
     },
 
-    // Resets the saved locale of the defaultLocalizer.
+    /**
+        Reset the saved locale back to default by using the steps above.
+        @function
+        @returns {String} the reset locale
+    */
     reset: {
         value: function() {
             if (typeof window !== "undefined" && window.localStorage) {
                 window.localStorage.removeItem(LOCALE_STORAGE_KEY);
             }
             this.init();
+            return this._locale;
         }
     }
 });
 
 /**
-    <p>The default localizer.</p>
+    The default localizer.
 
-    <p>The default locale is determined by following these steps:</p>
+    <p>The locale of the defaultLocalizer is determined by following these steps:</p>
 
     <ol>
         <li>If localStorage exists, use the value stored in "montage_locale" (LOCALE_STORAGE_KEY)</li>
@@ -495,16 +615,21 @@ var DefaultLocalizer = Montage.create(Localizer, {
         <li>Otherwise fall back to "en"</li>
     </ol>
 
-    <p>This can be set and the locale of {@link defaultLocalizer} will be
-    updated to match. If localStorage exists then the value will be saved in
+    <p>defaultLocalizer.locale can be set and if localStorage exists then the value will be saved in
     "montage_locale" (LOCALE_STORAGE_KEY).</p>
 
-    @property {Function} reset Reset the saved locale back to default by using the steps above.
-
-    @type {Localizer}
+    @type {module:montage/core/localizer.DefaultLocalizer}
+    @static
 */
 var defaultLocalizer = exports.defaultLocalizer = DefaultLocalizer.create().init();
-defaultLocalizer.loadMessages();
+
+/**
+    The localize function from {@link defaultLocalizer} provided for convenience.
+
+    @function
+    @see module:montage/core/localizer.Localizer#localize
+*/
+exports.localize = defaultLocalizer.localize.bind(defaultLocalizer);
 
 /**
     Stores variables needed for {@link MessageLocalizer}.
@@ -698,7 +823,7 @@ Deserializer.defineDeserializationUnit("localizations", function(object, propert
             continue;
         }
         if(logger.isDebug && !(DEFAULT_MESSAGE_KEY in desc)) {
-            logger.debug("Warning: localized property '" + prop + "' does not contain a default message property (" + DEFAULT_MESSAGE_KEY + "), in ", object);
+            logger.debug(this, "Warning: localized property '" + prop + "' does not contain a default message property (" + DEFAULT_MESSAGE_KEY + "), in ", object);
         }
 
         key = desc[KEY_KEY];
