@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <title>Translate Composer Test</title>
+    <script type="text/javascript" src="../../../../montage.js" data-package="../../../"></script>
+    <script type="text/montage-serialization">{
+
+    "test": {
+        "prototype": "ui/composer/drag-and-drop-composer-test/drag-and-drop-composer-test",
+        "properties": {
+
+        },
+        "bindings": {
+
+        }
+    },
+    "application": {
+        "prototype": "montage/ui/application",
+        "properties": {
+            "delegate": {"@": "test"}
+        }
+    },
+
+    "contacts": {
+        "prototype": "montage/ui/repetition.reel",
+        "properties": {
+            "element": {"#": "contacts"},
+            "objects": [
+                ["Amy Smith", "amy@example.com", "666-666-6666"],
+                ["James Black", "james@example.com", "777-777-7777"],
+                ["Jenna Birch", "jenna@example.com", "888-888-8888"]
+            ]
+        }
+    },
+
+    "contact": {
+        "prototype": "ui/composer/drag-and-drop-composer-test/contact.reel",
+        "properties": {
+            "element": {"#": "contact"}
+        },
+        "bindings": {
+            "name": {"<-": "@contacts.objectAtCurrentIteration.0"},
+            "email": {"<-": "@contacts.objectAtCurrentIteration.1"},
+            "telephone": {"<-": "@contacts.objectAtCurrentIteration.2"}
+        }
+    }
+
+    }</script>
+
+<style type="text/css">
+    .wrap {
+        position: relative;
+        background-color: #CCC;
+        width: 400px;
+        height: 400px;
+        overflow: hidden;
+    }
+    .mover {
+        background: #C00;
+        position: absolute;
+        width: 50px;
+        height: 50px;
+    }
+</style>
+
+</head>
+<body>
+    <h1>Drag and Drop Composer test</h1>
+
+    <div class="composeEmail">
+        <h2>Email</h2>
+        <label>To: <input data-montage-id="emailTo" /></label>
+        <textarea data-montage-id="emailBody">
+        </textarea>
+
+    </div>
+
+    <div>
+        <h2>Contacts</h2>
+        <ul data-montage-id="contacts">
+            <li><div data-montage-id="contact"></div></li>
+        </ul>
+    </div>
+
+</body>
+</html>

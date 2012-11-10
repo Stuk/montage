@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title></title>
+    <link rel="stylesheet" type="text/css" href="contact.css">
+    <script type="text/montage-serialization">
+    {
+        "owner": {
+            "properties": {
+                "element": {"#": "contact"}
+            }
+        },
+
+        "name": {
+            "prototype": "montage/ui/dynamic-text.reel",
+            "properties": {
+                "element": {"#": "name"}
+            },
+            "bindings": {
+                "value": {"<-": "@owner.name"}
+            }
+        },
+
+        "email": {
+            "prototype": "montage/ui/anchor.reel",
+            "properties": {
+                "element": {"#": "email"}
+            },
+            "bindings": {
+                "textContent": {"<-": "@owner.email"},
+                "href": {"<-": "@owner.email"}
+            }
+        },
+
+        "telephone": {
+            "prototype": "montage/ui/anchor.reel",
+            "properties": {
+                "element": {"#": "telephone"}
+            },
+            "bindings": {
+                "textContent": {"<-": "@owner.telephone"},
+                "href": {"<-": "@owner.email"}
+            }
+        }
+    }
+    </script>
+</head>
+<body>
+    <div data-montage-id="contact" class="Contact">
+        <div data-montage-id="name">Jane Bloggs</div>
+        Email: <a data-montage-id="email" href="mailto:jane.bloggs@example.com">jane.bloggs@example.com</a>
+        Telephone: <a data-montage-id="telephone" href="tel:555-555-5555">555-555-5555</a>
+    </div>
+</body>
+</html>
