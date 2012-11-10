@@ -138,8 +138,8 @@ describe("core/localizer-spec", function() {
                 return require.loadPackage(module.directory + "localizer/no-package-manifest/", {}).then(function(r){
                     l.require = r;
                     return l.loadMessages();
-                }).then(function() {
-                    return Promise.reject("expected messages not to load");
+                }).then(function(messages) {
+                    return Promise.reject("expected messages not to load but got " + JSON.stringify(messages));
                 }, function(err) {
                     return void 0;
                 });
@@ -148,8 +148,8 @@ describe("core/localizer-spec", function() {
                 return require.loadPackage(module.directory + "localizer/no-manifest/", {}).then(function(r){
                     l.require = r;
                     return l.loadMessages();
-                }).then(function() {
-                    return Promise.reject("expected messages not to load");
+                }).then(function(messages) {
+                    return Promise.reject("expected messages not to load but got " + JSON.stringify(messages));
                 }, function(err) {
                     return void 0;
                 });
@@ -158,8 +158,8 @@ describe("core/localizer-spec", function() {
                 return require.loadPackage(module.directory + "localizer/no-manifest-files/", {}).then(function(r){
                     l.require = r;
                     return l.loadMessages();
-                }).then(function() {
-                    return Promise.reject("expected messages not to load");
+                }).then(function(messages) {
+                    return Promise.reject("expected messages not to load but got " + JSON.stringify(messages));
                 }, function(err) {
                     return void 0;
                 });

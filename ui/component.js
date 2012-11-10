@@ -1603,8 +1603,8 @@ var Component = exports.Component = Montage.create(Montage,/** @lends module:mon
         @type Boolean
         @default false
         @example
-var localizer = require("montage/core/localizer"),
-    defaultLocalizer = localizer.defaultLocalizer,
+// require localizer
+var defaultLocalizer = localizer.defaultLocalizer,
     _ = localizer.localize;
 
 exports.Main = Montage.create(Component, {

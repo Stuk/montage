@@ -281,9 +281,9 @@ var Localizer = exports.Localizer = Montage.create(Montage, /** @lends module:mo
             }).then(function(localesMessages) {
                 return self._collapseMessages(localesMessages);
 
-            }, function(reason, error, rejection) {
-                console.error("Could not load messages for '" + self.locale + "': " + reason);
-                return rejection;
+            }).fail(function(error) {
+                console.error("Could not load messages for '" + self.locale + "': " + error);
+                throw error;
 
             }).then(function(messages) {
                 if (typeof callback === "function") {
@@ -319,7 +319,9 @@ var Localizer = exports.Localizer = Montage.create(Montage, /** @lends module:mo
             var availableLocales, localesMessagesP = [], fallbackLocale, localeFiles, filename;
 
             if (!(LOCALES_DIRECTORY in files)) {
-                return Promise.reject("Package does not contain a '" + LOCALES_DIRECTORY + "' directory");
+                return Promise.reject(new Error(
+                    "Package does not contain a '" + LOCALES_DIRECTORY + "' directory"
+                ));
             }
 
             availableLocales = files[LOCALES_DIRECTORY].files;
@@ -778,6 +780,52 @@ var MessageLocalizer = exports.MessageLocalizer = Montage.create(Montage, /** @l
             }
         }
     }
+});
+
+var Message = exports.Message = Montage.create(Montage, {
+
+    _message: {
+        value: null
+    },
+
+    _key: {
+        value: null
+    },
+    key: {
+
+    },
+
+    localizer: {
+        value: defaultLocalizer
+    },
+
+    _default: {
+        value: null
+    },
+    default: {
+        get: function() {
+            return this._default;
+        },
+        set: function(value) {
+            if (value !== this._default) {
+                this._default = value;
+                if (this._message === null) {
+                    this._message = value;
+                }
+            }
+        }
+    },
+
+    _localized: {
+        value: ""
+    },
+    localized: {
+        depends: ["_localized"],
+        get: function() {
+            return this._localized;
+        }
+    }
+
 });
 
 var createMessageBinding = function(object, prop, variables, deserializer, messageFunction) {
