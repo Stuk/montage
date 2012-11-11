@@ -49,19 +49,20 @@
     }</script>
 
 <style type="text/css">
-    .wrap {
-        position: relative;
-        background-color: #CCC;
-        width: 400px;
-        height: 400px;
-        overflow: hidden;
+
+    .composeEmail {
+        border: 1px solid #ccc;
     }
-    .mover {
-        background: #C00;
-        position: absolute;
-        width: 50px;
-        height: 50px;
+
+    .composeEmail label {
+        display: block;
     }
+
+    .delete {
+        border: 1px solid #FCC;
+        background: #FEE;
+    }
+
 </style>
 
 </head>
@@ -74,6 +75,11 @@
         <textarea data-montage-id="emailBody">
         </textarea>
 
+    </div>
+
+    <div>
+        <h2>Trash</h2>
+        <div class="delete">Drop here to delete</div>
     </div>
 
     <div>
