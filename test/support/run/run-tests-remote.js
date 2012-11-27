@@ -6,49 +6,42 @@ var util = require("util"),
     Q = require("q"),
     wd = require("./q-wd.js");
 
-var WEBDRIVER_HUB_HOST = "127.0.0.1",
-    WEBDRIVER_HUB_PORT = "4444",
-    BROWSER = "chrome";
 
-var TEST_URL = "http://127.0.0.1:80/montage/test/run-xml.html";
+var program = require('commander');
 
-var DEBUG = false;
+program
+  .version('0.0.0')
+  .usage('[options] <test page url>')
+  .option('-b, --browser <name>', 'Which browser to use. Default: chrome', 'chrome')
+  .option('-v, --browserVersion <version>', 'Which version of the browser to use. Default: none (latest)')
+  .option('-o, --os <name>', 'Which OS to use. Default: ANY', 'ANY')
+  .option('-h, --host <host>', 'Webdriver host. Default: 127.0.0.1', '127.0.0.1')
+  .option('-p, --port <port>', 'Webdriver port. Default: 4444', 4444)
+  .option('-u, --sauceUser <username>', 'Saucelabs username.')
+  .option('-k, --sauceKey <access key>', 'Saucelabs access key.')
+  .option('-D, --debug', 'Enable debug mode.', false)
+  .parse(process.argv);
 
-var opts = process.argv.slice();
-// remove "node" and filename
-opts.shift();
-opts.shift();
-if (opts.length > 0) {
-    if (opts[0] === "--help") {
-        console.log("Usage: " + process.argv.slice(0, 2).join(" ") + " [--debug] [browser [host [port [test_url]]]]");
-        return;
-    }
-    if (opts[0] === "--debug") {
-        DEBUG = true;
-        opts.shift();
-    }
-    BROWSER = opts.shift() || BROWSER;
-    WEBDRIVER_HUB_HOST = opts.shift() || WEBDRIVER_HUB_HOST;
-    WEBDRIVER_HUB_PORT = opts.shift() || WEBDRIVER_HUB_PORT;
-    TEST_URL = opts.shift() || TEST_URL;
+if (!program.args || program.args.length !== 1) {
+    console.error("Exactly 1 test page url must be given");
+    process.exit(1);
 }
 
-var browser = wd.remote(WEBDRIVER_HUB_HOST, WEBDRIVER_HUB_PORT);
+var DEBUG = !!program.debug;
+var testUrl = program.args[0];
+
+var browser = wd.remote(program.host, program.port, program.sauceUser, program.sauceKey);
 
 // get the browser
 browser.init({
-    browserName: BROWSER,
-
-    "chrome.switches": ["--disable-popup-blocking"],
-
-    "opera.binary": process.env.OPERA_BINARY,
-    "opera.port": 0,
-    "opera.profile": null
+    browserName: program.browser,
+    platform: program.os,
+    version: program.browserVersion
 }).then(function(sessionId) {
-    return browser.get(TEST_URL);
+    return browser.get(testUrl);
 }).then(function() {
     // run the script
-    console.log("Running " + TEST_URL + " on " + WEBDRIVER_HUB_HOST + ":" + WEBDRIVER_HUB_PORT + " on " + BROWSER);
+    console.log("Running " + testUrl + " on " + program.host + ":" + program.port + " on " + program.browser);
 
     // poll until it's done
     var done = Q.defer();
@@ -89,7 +82,13 @@ browser.init({
     for (var filename in reports) {
         if (reports.hasOwnProperty(filename)) {
             console.log("Writing ../" + filename + " ...");
-            fs.writeFileSync("../" + filename, reports[filename], "utf8");
+            try {
+                fs.writeFileSync("../" + filename, reports[filename], "utf8");
+            } catch (e) {
+                if (DEBUG) {
+                    console.error(reports[filename]);
+                }
+            }
         }
     }
 
@@ -99,6 +98,6 @@ browser.init({
     console.error("Error: " + msg);
     browser.quit();
     return 1;
-}).end();
+}).done();
 
 
