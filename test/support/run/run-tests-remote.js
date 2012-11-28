@@ -63,7 +63,7 @@ function pollPage(err) {
             }
 
             if (typeof lastUpdate !== "number") {
-                fail(lastUpdate);
+                fail("lastUpdate: " + lastUpdate);
                 return;
             }
 
