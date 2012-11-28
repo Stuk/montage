@@ -2,6 +2,7 @@
 /*jshint node:true */
 var util = require("util"),
     fs = require("fs"),
+    path = require("path"),
     http = require("http"),
     Q = require("q"),
     wd = require("wd");
@@ -20,6 +21,7 @@ program
   .option('-u, --sauceUser <username>', 'Saucelabs username.')
   .option('-k, --sauceKey <access key>', 'Saucelabs access key.')
   .option('-D, --debug', 'Enable debug mode.', false)
+  .option('-O, --out <directory>', 'JUnit XML output directory. Default: ./report', './report')
   .parse(process.argv);
 
 if (!program.args || program.args.length !== 1) {
@@ -87,12 +89,17 @@ function writeReports(err, reports) {
 
     browser.quit();
 
+    if (!fs.existsSync(program.out)) {
+        fs.mkdirSync(program.out);
+    }
+
     // save XML reports to file
     for (var filename in reports) {
         if (reports.hasOwnProperty(filename)) {
-            console.log("Writing ../" + filename + " ...");
+            var outputFile = path.join(program.out, filename);
+            console.log("Writing " + outputFile + " ...");
             try {
-                fs.writeFileSync("../" + filename, reports[filename], "utf8");
+                fs.writeFileSync(outputFile, reports[filename], "utf8");
             } catch (e) {
                 if (DEBUG) {
                     console.error(reports[filename]);
