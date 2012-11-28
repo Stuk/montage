@@ -116,7 +116,7 @@ function fail(e) {
     var msg = e.message || e;
     console.error("Error: " + msg);
     browser.quit();
-    return 1;
+    process.exit(1);
 }
 
 
