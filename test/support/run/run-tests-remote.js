@@ -20,6 +20,7 @@ program
   .option('-p, --port <port>', 'Webdriver port. Default: 4444', 4444)
   .option('-u, --sauceUser <username>', 'Saucelabs username.')
   .option('-k, --sauceKey <access key>', 'Saucelabs access key.')
+  .option('-n, --name <name>', 'Name of the test run. Mainly for Saucelabs.', "")
   .option('-D, --debug', 'Enable debug mode.', false)
   .option('-O, --out <directory>', 'JUnit XML output directory. Default: ./report', './report')
   .parse(process.argv);
@@ -38,7 +39,8 @@ var browser = wd.remote(program.host, program.port, program.sauceUser, program.s
 browser.init({
     browserName: program.browser,
     platform: program.os,
-    version: program.browserVersion
+    version: program.browserVersion,
+    name: program.name
 }, getTestPage);
 function getTestPage(err, sessionId) {
     if (err) return fail(err);
