@@ -7,6 +7,8 @@ var util = require("util"),
     Q = require("q"),
     wd = require("wd");
 
+// how often to poll to see if the suite has finished
+var POLL_TIME = 10000;
 
 var program = require('commander');
 
@@ -70,11 +72,10 @@ function pollPage(err) {
             if (lastUpdate !== 0 && lastUpdate === previousUpdate) {
                 // newline
                 console.log();
-                clearInterval(poll);
                 getReports();
             } else {
                 previousUpdate = lastUpdate;
-                setTimeout(poll, 6000);
+                setTimeout(poll, POLL_TIME);
             }
         });
     };
