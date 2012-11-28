@@ -4,7 +4,7 @@ var util = require("util"),
     fs = require("fs"),
     http = require("http"),
     Q = require("q"),
-    wd = require("./q-wd.js");
+    wd = require("wd");
 
 
 var program = require('commander');
@@ -37,25 +37,29 @@ browser.init({
     browserName: program.browser,
     platform: program.os,
     version: program.browserVersion
-}).then(function(sessionId) {
-    return browser.get(testUrl);
-}).then(function() {
+}, getTestPage);
+function getTestPage(err, sessionId) {
+    if (err) return fail(err);
+    return browser.get(testUrl, pollPage);
+}
+function pollPage(err) {
+    if (err) return fail(err);
     // run the script
     console.log("Running " + testUrl + " on " + program.host + ":" + program.port + " on " + program.browser);
 
     // poll until it's done
-    var done = Q.defer();
+    // var done = Q.defer();
     var previousUpdate = -1;
 
     var poll = function() {
         process.stdout.write(".");
-        browser.execute("return jasmine.getEnv().lastUpdate").then(function(lastUpdate) {
+        browser.execute("return jasmine.getEnv().lastUpdate", function(err, lastUpdate) {
             if (DEBUG) {
                 console.log(lastUpdate);
             }
 
             if (typeof lastUpdate !== "number") {
-                done.reject(lastUpdate);
+                fail(lastUpdate);
                 return;
             }
 
@@ -63,7 +67,7 @@ browser.init({
                 // newline
                 console.log();
                 clearInterval(poll);
-                done.resolve();
+                getReports();
             } else {
                 previousUpdate = lastUpdate;
                 setTimeout(poll, 6000);
@@ -72,10 +76,15 @@ browser.init({
     };
     poll();
 
-    return done.promise;
-}).then(function() {
-    return browser.execute("return __jasmine_reports;");
-}).then(function(reports) {
+    // return done.promise;
+}
+function getReports(err) {
+    if (err) return fail(err);
+    return browser.execute("return __jasmine_reports;", writeReports);
+}
+function writeReports(err, reports) {
+    if (err) return fail(err);
+
     browser.quit();
 
     // save XML reports to file
@@ -93,11 +102,12 @@ browser.init({
     }
 
     console.log("Testing completed");
-}).fail(function(e) { // finally capture a rejection.
+}
+function fail(e) {
     var msg = e.message || e;
     console.error("Error: " + msg);
     browser.quit();
     return 1;
-}).done();
+}
 
 

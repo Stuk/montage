@@ -5,6 +5,7 @@
     "description": "Runs the Montage tests on a remote server through webdriver",
     "dependencies": {
         "q": "0.8.x",
-        "commander": "1.1.x"
+        "commander": "1.1.x",
+        "wd": "0.0.x"
     }
 }
