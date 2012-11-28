@@ -67,7 +67,7 @@ function pollPage(err) {
                 return;
             }
 
-            if (lastUpdate === previousUpdate) {
+            if (lastUpdate !== 0 && lastUpdate === previousUpdate) {
                 // newline
                 console.log();
                 clearInterval(poll);
