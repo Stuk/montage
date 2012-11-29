@@ -18,7 +18,7 @@ var POLL_TIME = 10000;
  * @return {Promise}         Resolved if the process completed, rejected if
  *                           there is an error
  */
-var main = module.exports = function(testUrl, options, log) {
+var run = exports.run = function(testUrl, options, log) {
     var DEBUG = !!options.debug;
     var browser = wd.remote(options.host, options.port, options.sauceUser, options.sauceKey);
 
@@ -31,7 +31,7 @@ var main = module.exports = function(testUrl, options, log) {
         return Q.ncall(browser.get, browser, testUrl);
     }).then(function pollPage() {
         // run the script
-        log("Running " + testUrl + " on " + program.host + ":" + program.port + " on " + program.browser);
+        log("Running " + testUrl + " on " + options.host + ":" + options.port + " on " + options.browser);
 
         // poll until it's done
         var done = Q.defer();
@@ -73,8 +73,26 @@ var main = module.exports = function(testUrl, options, log) {
     });
 };
 
+var writeReports = exports.writeReports = function (reports, directory, log) {
+    if (!fs.existsSync(directory)) {
+        fs.mkdirSync(directory);
+    }
 
-if (!module.parent) {
+    // save XML reports to file
+    for (var filename in reports) {
+        if (reports.hasOwnProperty(filename)) {
+            var outputFile = path.join(directory, filename);
+            log("Writing " + outputFile + " ...");
+            try {
+                fs.writeFileSync(outputFile, reports[filename], "utf8");
+            } catch (e) {
+                console.error(e);
+            }
+        }
+    }
+};
+
+function main() {
     var program = require('commander');
 
     program
@@ -89,7 +107,7 @@ if (!module.parent) {
       .option('-k, --sauceKey <access key>', 'Saucelabs access key.')
       .option('-n, --name <name>', 'Name of the test run. Mainly for Saucelabs.', "")
       .option('-D, --debug', 'Enable debug mode.', false)
-      .option('-O, --out <directory>', 'JUnit XML output directory. Default: ./report', './report')
+      .option('-O, --outputDir <directory>', 'JUnit XML output directory. Default: ./report', './report')
       .parse(process.argv);
 
     if (!program.args || program.args.length !== 1) {
@@ -97,30 +115,14 @@ if (!module.parent) {
         process.exit(1);
     }
 
-    main(program.args[0], program, function() {
+    var log = function() {
         console.log.apply(console, arguments);
-    }).then(function writeReports(reports) {
-        if (!fs.existsSync(program.out)) {
-            fs.mkdirSync(program.out);
-        }
+    };
 
-        // save XML reports to file
-        for (var filename in reports) {
-            if (reports.hasOwnProperty(filename)) {
-                var outputFile = path.join(program.out, filename);
-                console.log("Writing " + outputFile + " ...");
-                try {
-                    fs.writeFileSync(outputFile, reports[filename], "utf8");
-                } catch (e) {
-                    if (DEBUG) {
-                        console.error(reports[filename]);
-                    }
-                }
-            }
-        }
-
-        console.log("Testing completed");
+    run(program.args[0], program, log).then(function(reports) {
+        writeReports(reports, program.outputDir, log);
     }).then(function() {
+        console.log("Testing completed");
         process.exit(0);
     }, function(err) {
         err = err || "Unknown error";
@@ -128,6 +130,10 @@ if (!module.parent) {
         console.error("Error: " + msg);
         process.exit(1);
     });
+}
+
+if (!module.parent) {
+    main();
 }
 
 
