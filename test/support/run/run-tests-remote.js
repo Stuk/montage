@@ -31,7 +31,7 @@ var run = exports.run = function(testUrl, options, log) {
         return Q.ncall(browser.get, browser, testUrl);
     }).then(function pollPage() {
         // run the script
-        log("Running " + testUrl + " on " + options.host + ":" + options.port + " on " + options.browser + " on " + options.platform);
+        log("Running " + testUrl + " on " + options.host + ":" + options.port + " on " + options.browser + options.browserVersion + " on " + options.platform);
 
         // poll until it's done
         var done = Q.defer();
