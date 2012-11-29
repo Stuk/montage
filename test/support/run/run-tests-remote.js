@@ -24,14 +24,14 @@ var run = exports.run = function(testUrl, options, log) {
 
     return Q.ncall(browser.init, browser, {
         browserName: options.browser,
-        platform: options.os,
+        platform: options.platform,
         version: options.browserVersion,
         name: options.name
     }).then(function getTestPage(sessionId) {
         return Q.ncall(browser.get, browser, testUrl);
     }).then(function pollPage() {
         // run the script
-        log("Running " + testUrl + " on " + options.host + ":" + options.port + " on " + options.browser);
+        log("Running " + testUrl + " on " + options.host + ":" + options.port + " on " + options.browser + " on " + options.platform);
 
         // poll until it's done
         var done = Q.defer();
@@ -100,7 +100,7 @@ function main() {
       .usage('[options] <test page url>')
       .option('-b, --browser <name>', 'Which browser to use. Default: chrome', 'chrome')
       .option('-v, --browserVersion <version>', 'Which version of the browser to use. Default: none (latest)')
-      .option('-o, --os <name>', 'Which OS to use. Default: ANY', 'ANY')
+      .option('-P, --platform <name>', 'Which OS to use. Default: ANY', 'ANY')
       .option('-h, --host <host>', 'Webdriver host. Default: 127.0.0.1', '127.0.0.1')
       .option('-p, --port <port>', 'Webdriver port. Default: 4444', 4444)
       .option('-u, --sauceUser <username>', 'Saucelabs username.')
