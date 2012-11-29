@@ -4,120 +4,130 @@ var util = require("util"),
     fs = require("fs"),
     path = require("path"),
     http = require("http"),
-    Q = require("q"),
+    Q = require("../../../packages/mr/packages/q"),
     wd = require("wd");
 
 // how often to poll to see if the suite has finished
 var POLL_TIME = 10000;
 
-var program = require('commander');
+/**
+ * Runs the test page in the given browser
+ * @param  {string} testUrl page to test
+ * @param  {Object} options  The options to use
+ * @param  {function} log callback function where log messages will be sent
+ * @return {Promise}         Resolved if the process completed, rejected if
+ *                           there is an error
+ */
+var main = module.exports = function(testUrl, options, log) {
+    var DEBUG = !!options.debug;
+    var browser = wd.remote(options.host, options.port, options.sauceUser, options.sauceKey);
 
-program
-  .version('0.0.0')
-  .usage('[options] <test page url>')
-  .option('-b, --browser <name>', 'Which browser to use. Default: chrome', 'chrome')
-  .option('-v, --browserVersion <version>', 'Which version of the browser to use. Default: none (latest)')
-  .option('-o, --os <name>', 'Which OS to use. Default: ANY', 'ANY')
-  .option('-h, --host <host>', 'Webdriver host. Default: 127.0.0.1', '127.0.0.1')
-  .option('-p, --port <port>', 'Webdriver port. Default: 4444', 4444)
-  .option('-u, --sauceUser <username>', 'Saucelabs username.')
-  .option('-k, --sauceKey <access key>', 'Saucelabs access key.')
-  .option('-n, --name <name>', 'Name of the test run. Mainly for Saucelabs.', "")
-  .option('-D, --debug', 'Enable debug mode.', false)
-  .option('-O, --out <directory>', 'JUnit XML output directory. Default: ./report', './report')
-  .parse(process.argv);
+    return Q.ncall(browser.init, browser, {
+        browserName: options.browser,
+        platform: options.os,
+        version: options.browserVersion,
+        name: options.name
+    }).then(function getTestPage(sessionId) {
+        return Q.ncall(browser.get, browser, testUrl);
+    }).then(function pollPage() {
+        // run the script
+        log("Running " + testUrl + " on " + program.host + ":" + program.port + " on " + program.browser);
 
-if (!program.args || program.args.length !== 1) {
-    console.error("Exactly 1 test page url must be given");
-    process.exit(1);
-}
+        // poll until it's done
+        var done = Q.defer();
+        var previousUpdate = -1;
 
-var DEBUG = !!program.debug;
-var testUrl = program.args[0];
+        var poll = function() {
+            log(".");
+            browser.execute("return jasmine.getEnv().lastUpdate", function(err, lastUpdate) {
+                if (err) {
+                    done.reject(err.cause.value.message);
+                }
 
-var browser = wd.remote(program.host, program.port, program.sauceUser, program.sauceKey);
+                if (DEBUG) {
+                    log(lastUpdate);
+                }
 
-// get the browser
-browser.init({
-    browserName: program.browser,
-    platform: program.os,
-    version: program.browserVersion,
-    name: program.name
-}, getTestPage);
-function getTestPage(err, sessionId) {
-    if (err) return fail(err);
-    return browser.get(testUrl, pollPage);
-}
-function pollPage(err) {
-    if (err) return fail(err);
-    // run the script
-    console.log("Running " + testUrl + " on " + program.host + ":" + program.port + " on " + program.browser);
+                if (typeof lastUpdate !== "number") {
+                    done.reject("lastUpdate: " + lastUpdate);
+                    return;
+                }
 
-    // poll until it's done
-    // var done = Q.defer();
-    var previousUpdate = -1;
+                if (lastUpdate !== 0 && lastUpdate === previousUpdate) {
+                    // newline
+                    log();
+                    done.resolve();
+                } else {
+                    previousUpdate = lastUpdate;
+                    setTimeout(poll, POLL_TIME);
+                }
+            });
+        };
+        poll();
 
-    var poll = function() {
-        process.stdout.write(".");
-        browser.execute("return jasmine.getEnv().lastUpdate", function(err, lastUpdate) {
-            if (DEBUG) {
-                console.log(lastUpdate);
-            }
+        return done.promise;
+    }).then(function getReports() {
+        return Q.ncall(browser.execute, browser, "return __jasmine_reports;");
+    }).fin(function quitBrowser() {
+        return Q.ncall(browser.quit, browser);
+    });
+};
 
-            if (typeof lastUpdate !== "number") {
-                fail("lastUpdate: " + lastUpdate);
-                return;
-            }
 
-            if (lastUpdate !== 0 && lastUpdate === previousUpdate) {
-                // newline
-                console.log();
-                getReports();
-            } else {
-                previousUpdate = lastUpdate;
-                setTimeout(poll, POLL_TIME);
-            }
-        });
-    };
-    poll();
+if (!module.parent) {
+    var program = require('commander');
 
-    // return done.promise;
-}
-function getReports(err) {
-    if (err) return fail(err);
-    return browser.execute("return __jasmine_reports;", writeReports);
-}
-function writeReports(err, reports) {
-    if (err) return fail(err);
+    program
+      .version('0.0.0')
+      .usage('[options] <test page url>')
+      .option('-b, --browser <name>', 'Which browser to use. Default: chrome', 'chrome')
+      .option('-v, --browserVersion <version>', 'Which version of the browser to use. Default: none (latest)')
+      .option('-o, --os <name>', 'Which OS to use. Default: ANY', 'ANY')
+      .option('-h, --host <host>', 'Webdriver host. Default: 127.0.0.1', '127.0.0.1')
+      .option('-p, --port <port>', 'Webdriver port. Default: 4444', 4444)
+      .option('-u, --sauceUser <username>', 'Saucelabs username.')
+      .option('-k, --sauceKey <access key>', 'Saucelabs access key.')
+      .option('-n, --name <name>', 'Name of the test run. Mainly for Saucelabs.', "")
+      .option('-D, --debug', 'Enable debug mode.', false)
+      .option('-O, --out <directory>', 'JUnit XML output directory. Default: ./report', './report')
+      .parse(process.argv);
 
-    browser.quit();
-
-    if (!fs.existsSync(program.out)) {
-        fs.mkdirSync(program.out);
+    if (!program.args || program.args.length !== 1) {
+        console.error("Exactly 1 test page url must be given");
+        process.exit(1);
     }
 
-    // save XML reports to file
-    for (var filename in reports) {
-        if (reports.hasOwnProperty(filename)) {
-            var outputFile = path.join(program.out, filename);
-            console.log("Writing " + outputFile + " ...");
-            try {
-                fs.writeFileSync(outputFile, reports[filename], "utf8");
-            } catch (e) {
-                if (DEBUG) {
-                    console.error(reports[filename]);
+    main(program.args[0], program, function() {
+        console.log.apply(console, arguments);
+    }).then(function writeReports(reports) {
+        if (!fs.existsSync(program.out)) {
+            fs.mkdirSync(program.out);
+        }
+
+        // save XML reports to file
+        for (var filename in reports) {
+            if (reports.hasOwnProperty(filename)) {
+                var outputFile = path.join(program.out, filename);
+                console.log("Writing " + outputFile + " ...");
+                try {
+                    fs.writeFileSync(outputFile, reports[filename], "utf8");
+                } catch (e) {
+                    if (DEBUG) {
+                        console.error(reports[filename]);
+                    }
                 }
             }
         }
-    }
 
-    console.log("Testing completed");
-}
-function fail(e) {
-    var msg = e.message || e;
-    console.error("Error: " + msg);
-    browser.quit();
-    process.exit(1);
+        console.log("Testing completed");
+    }).then(function() {
+        process.exit(0);
+    }, function(err) {
+        err = err || "Unknown error";
+        var msg = err;
+        console.error("Error: " + msg);
+        process.exit(1);
+    });
 }
 
 
