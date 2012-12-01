@@ -22,13 +22,13 @@ var run = exports.run = function(testUrl, options, log) {
     var DEBUG = !!options.debug;
     var browser = wd.remote(options.host, options.port, options.sauceUser, options.sauceKey);
 
-    return Q.ncall(browser.init, browser, {
+    return Q.ninvoke(browser, "init", {
         browserName: options.browser,
         platform: options.platform,
         version: options.browserVersion,
         name: options.name
     }).then(function getTestPage(sessionId) {
-        return Q.ncall(browser.get, browser, testUrl);
+        return Q.ninvoke(browser, "get", testUrl);
     }).then(function pollPage() {
         // run the script
         log("Running " + testUrl + " on " + options.host + ":" + options.port + " on " + options.browser + options.browserVersion + " on " + options.platform);
@@ -67,9 +67,9 @@ var run = exports.run = function(testUrl, options, log) {
 
         return done.promise;
     }).then(function getReports() {
-        return Q.ncall(browser.execute, browser, "return __jasmine_reports;");
+        return Q.ninvoke(browser, "execute", "return __jasmine_reports;");
     }).fin(function quitBrowser() {
-        return Q.ncall(browser.quit, browser);
+        return Q.ninvoke(browser, "quit");
     });
 };
 
