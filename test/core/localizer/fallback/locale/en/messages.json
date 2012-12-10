@@ -11,5 +11,9 @@
             "name": "Joe Bloggs"
         }
     },
-    "photo_deleted": "{photo_name} was deleted"
+    "photo_deleted": "{photo_name} was deleted",
+
+    "horse": "{num, plural, one {1 horse} other {# horses}}",
+    "cow": "{num, plural, one {1 cow} other {# cows}}",
+    "sheep": "{num} sheep"
 }

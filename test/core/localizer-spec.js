@@ -36,6 +36,65 @@ var Montage = require("montage").Montage,
 
 describe("core/localizer-spec", function() {
 
+    describe("Message", function() {
+        var message;
+        beforeEach(function() {
+            message = Localizer.Message.create();
+        });
+
+        it("sets the localized property to the default message", function() {
+            message.default = "Hello";
+            expect(message.localized).toBe("Hello");
+        });
+
+        it("localizes the messages when message binding update", function() {
+            var def = {
+                default: "Hello, {name}"
+            };
+
+            message.data = {
+                name: "World"
+            };
+
+            Object.defineBinding(message, "default", {
+                boundObject: def,
+                boundObjectPropertyPath: "default"
+            });
+
+            expect(message.localized).toBe("Hello, World");
+            def.default = "Goodbye, {name}";
+            expect(message.localized).toBe("Goodbye, World");
+        });
+
+        it("localizes the messages when data bindings update", function() {
+            message.default = "Hello, {name}";
+
+            var object = {
+                name: "before"
+            };
+
+            Object.defineBinding(message, "data.name", {
+                boundObject: object,
+                boundObjectPropertyPath: "name"
+            });
+
+            expect(message.localized).toBe("Hello, before");
+            object.name = "after";
+            expect(message.localized).toBe("Hello, after");
+        });
+
+        it("automatically localizes the messages when data property updates", function() {
+            message.default = "Hello, {name}";
+
+            message.data = {
+                name: "before"
+            };
+            expect(message.localized).toBe("Hello, before");
+            message.data.name = "after";
+            expect(message.localized).toBe("Hello, after");
+        });
+    });
+
     describe("Localizer", function(){
         var l;
         beforeEach(function() {
@@ -198,6 +257,7 @@ describe("core/localizer-spec", function() {
             });
 
             it("loads non-English messages", function() {
+                debugger;
                 var l = Localizer.Localizer.create().init("no");
                 return require.loadPackage(module.directory + "localizer/fallback/", {}).then(function(r){
                     l.require = r;

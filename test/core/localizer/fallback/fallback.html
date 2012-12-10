@@ -82,6 +82,41 @@
             }
         },
 
+        "message": {
+            "prototype": "montage/core/localizer[Message]",
+            "properties": {
+                "key": "welcome"
+            },
+            "bindings": {
+                "data.name": {"<-": "@bindingInput.value"}
+            }
+        },
+
+        "messageRepetition": {
+            "prototype": "montage/ui/repetition.reel",
+            "properties": {
+                "element": {"#": "messageRepetition"},
+                "objects": [
+                    {"animal": "cow", "number": 4},
+                    {"animal": "horse", "number": 1},
+                    {"animal": "sheep", "number": 2}
+                ]
+            }
+        },
+
+        "repeatedMessageText": {
+            "prototype": "montage/ui/dynamic-text.reel",
+            "properties": {
+                "element": {"#": "repeatedMessageText"}
+            },
+            "localizations": {
+                "value": {
+                    "_": {"<-": "@messageRepetition.objectAtCurrentIteration.animal"},
+                    "num": {"<-": "@messageRepetition.objectAtCurrentIteration.number"}
+                }
+            }
+        },
+
         "test": {
             "prototype": "montage",
             "properties": {
@@ -90,7 +125,8 @@
                 "resources": {"@": "resources"},
                 "bindingInput": {"@": "bindingInput"},
                 "binding": {"@": "binding"},
-                "twoProperties": {"@": "twoProperties"}
+                "twoProperties": {"@": "twoProperties"},
+                "message": {"@": "message"}
             }
         },
         "application": {
@@ -109,7 +145,12 @@
 
     <input type="text" data-montage-id="bindingInput" value="World" />
     <div data-montage-id="binding">fail</div>
-    <button data-montage-id="twoProperties">fail</div>
+    <button data-montage-id="twoProperties">fail</button>
+
+    <h2>Numbers:</h2>
+    <div data-montage-id="messageRepetition">
+        <div data-montage-id="repeatedMessageText"></div>
+    </div>
 
 </body>
 </html>

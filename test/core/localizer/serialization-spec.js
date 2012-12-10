@@ -55,6 +55,12 @@ var testPage = TestPageLoader.queueTest("fallback", {directory: module.directory
     }
 
     describe("core/localizer/serialization-spec", function() {
+        describe("Message", function() {
+            it("localizes the message", function() {
+                expect(test.message.localized).toBe("Welcome to the site, World");
+            });
+        });
+
         describe("localizations unit", function() {
 
             it("requires a key", function() {

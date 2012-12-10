@@ -11,5 +11,9 @@
             "name": "Joe Bloggs"
         }
     },
-    "photo_deleted": "{photo_name} ble slettet"
+    "photo_deleted": "{photo_name} ble slettet",
+
+    "horse": "{num, plural, one {1 hest} other {# hester}}",
+    "cow": "{num, plural, one {1 ku} other {# kyr}}",
+    "sheep": "{num, plural, one {1 sau} other {# sauer}}"
 }
