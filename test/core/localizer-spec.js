@@ -42,32 +42,62 @@ describe("core/localizer-spec", function() {
             message = Localizer.Message.create();
         });
 
+        it("has an init method that accepts key and default", function() {
+            message = Localizer.Message.create().init("hello", "Hello");
+
+            waits(10); // next tick for promise resolution
+            runs(function() {
+                expect(message.localized).toBe("Hello");
+            });
+        });
+
+        it("has an init method that accepts a key, default and data", function() {
+            var object = {
+                name: "World"
+            };
+            message = Localizer.Message.create().init("hello", "Hello, {name}", object);
+            waits(10); // next tick for promise resolution
+            runs(function() {
+                expect(message.localized).toBe("Hello, World");
+            });
+
+        });
+
         it("sets the localized property to the default message", function() {
-            message.default = "Hello";
-            expect(message.localized).toBe("Hello");
+            message.key = "Hello";
+            waits(10); // next tick for promise resolution
+            runs(function() {
+                expect(message.localized).toBe("Hello");
+            });
         });
 
         it("localizes the messages when message binding update", function() {
             var def = {
-                default: "Hello, {name}"
+                key: "Hello, {name}"
             };
 
             message.data = {
                 name: "World"
             };
 
-            Object.defineBinding(message, "default", {
+            Object.defineBinding(message, "key", {
                 boundObject: def,
-                boundObjectPropertyPath: "default"
+                boundObjectPropertyPath: "key"
             });
 
-            expect(message.localized).toBe("Hello, World");
-            def.default = "Goodbye, {name}";
-            expect(message.localized).toBe("Goodbye, World");
+            waits(10); // next tick for promise resolution
+            runs(function() {
+                expect(message.localized).toBe("Hello, World");
+                def.key = "Goodbye, {name}";
+            });
+            waits(10); // next tick for promise resolution
+            runs(function() {
+                expect(message.localized).toBe("Goodbye, World");
+            });
         });
 
         it("localizes the messages when data bindings update", function() {
-            message.default = "Hello, {name}";
+            message.key = "Hello, {name}";
 
             var object = {
                 name: "before"
@@ -78,20 +108,69 @@ describe("core/localizer-spec", function() {
                 boundObjectPropertyPath: "name"
             });
 
-            expect(message.localized).toBe("Hello, before");
-            object.name = "after";
-            expect(message.localized).toBe("Hello, after");
+            waits(10); // next tick for promise resolution
+            runs(function() {
+                expect(message.localized).toBe("Hello, before");
+                object.name = "after";
+            });
+            waits(10); // next tick for promise resolution
+            runs(function() {
+                expect(message.localized).toBe("Hello, after");
+                message.data.name = "later";
+            });
+            waits(10); // next tick for promise resolution
+            runs(function() {
+                expect(message.localized).toBe("Hello, later");
+                expect(object.name).toBe("later");
+            });
+        });
+
+        it("localizes the messages when other data bindings update", function() {
+            message.key = "Hello, {name}";
+
+            var otherObject = {
+                name: "before"
+            };
+
+            var object = {};
+
+            Object.defineBinding(object, "name", {
+                boundObject: otherObject,
+                boundObjectPropertyPath: "name"
+            });
+
+            Object.defineBinding(message, "data.name", {
+                boundObject: object,
+                boundObjectPropertyPath: "name"
+            });
+
+            waits(10); // next tick for promise resolution
+            runs(function() {
+                expect(message.localized).toBe("Hello, before");
+                otherObject.name = "after";
+            });
+            waits(10); // next tick for promise resolution
+            runs(function() {
+                expect(message.localized).toBe("Hello, after");
+            });
         });
 
         it("automatically localizes the messages when data property updates", function() {
-            message.default = "Hello, {name}";
+            message.key = "Hello, {name}";
 
             message.data = {
                 name: "before"
             };
-            expect(message.localized).toBe("Hello, before");
-            message.data.name = "after";
-            expect(message.localized).toBe("Hello, after");
+
+            waits(10); // next tick for promise resolution
+            runs(function() {
+                expect(message.localized).toBe("Hello, before");
+                message.data.name = "after";
+            });
+            waits(10); // next tick for promise resolution
+            runs(function() {
+                expect(message.localized).toBe("Hello, after");
+            });
         });
     });
 
@@ -257,7 +336,6 @@ describe("core/localizer-spec", function() {
             });
 
             it("loads non-English messages", function() {
-                debugger;
                 var l = Localizer.Localizer.create().init("no");
                 return require.loadPackage(module.directory + "localizer/fallback/", {}).then(function(r){
                     l.require = r;

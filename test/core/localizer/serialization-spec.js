@@ -32,8 +32,13 @@ POSSIBILITY OF SUCH DAMAGE.
 var Montage = require("montage").Montage,
     Localizer = require("montage/core/localizer"),
     Promise = require("montage/core/promise").Promise,
+    Serializer = require("montage/core/serializer").Serializer,
     Deserializer = require("montage/core/deserializer").Deserializer,
     TestPageLoader = require("support/testpageloader").TestPageLoader;
+
+var stripPP = function stripPrettyPrintting(str) {
+    return str.replace(/\n\s*/g, "");
+};
 
 var testPage = TestPageLoader.queueTest("fallback", {directory: module.directory}, function() {
     var test = testPage.test;
@@ -51,6 +56,38 @@ var testPage = TestPageLoader.queueTest("fallback", {directory: module.directory
         waitsFor(function() { return latch; });
         runs(function() {
             callback(objects);
+        });
+    }
+
+    function testSerializer(object, callback) {
+        var serializer = Serializer.create().initWithRequire(require),
+            objects;
+
+        testDeserializer({
+            source: {
+                value: {x: "Hello, {name}"}
+            },
+            target: {
+                prototype: "montage",
+                localizations: {
+                    "binding": {
+                        "_": "", // key is required
+                        "_default": {"<-": "@source.value"},
+                        "name": "someone"
+                    },
+                    "message": {
+                        "_": "", // key is required
+                        "_default": "Hello",
+                    }
+                }
+            }
+        }, function(o) {
+            objects = o;
+            waits(10); // wait for messages to be resolved
+            runs(function() {
+                var serialization = serializer.serializeObject(objects.target);
+                callback(stripPP(serialization));
+            });
         });
     }
 
@@ -86,6 +123,105 @@ var testPage = TestPageLoader.queueTest("fallback", {directory: module.directory
                 expect(test.twoProperties.unpressedLabel).toBe("Off");
                 expect(test.twoProperties.pressedLabel).toBe("On");
             });
+
+            it("accepts a binding for the default message", function() {
+                testDeserializer({
+                    source: {
+                        value: {value: "Hello, {name}"}
+                    },
+                    target: {
+                        prototype: "montage",
+                        localizations: {
+                            "value": {
+                                "_": "", // key is required
+                                "_default": {"<-": "@source.value"},
+                                "name": "someone"
+                            }
+                        }
+                    }
+                }, function(objects) {
+                    waits(10); // wait for promise to be resolved
+                    runs(function() {
+                        // debugger;
+                        expect(objects.target.value).toBe("Hello, someone");
+                        objects.source.value = "Goodbye, {name}";
+                    });
+                    // messages get localized asynchronously, so need to wait
+                    // until next tick
+                    waits(10);
+                    runs(function() {
+                        expect(objects.target.value).toBe("Goodbye, someone");
+                    });
+                });
+            });
+
+            describe("serializer", function() {
+                var objects,
+                    serializer;
+
+                beforeEach(function() {
+                    testDeserializer({
+                        source: {
+                            value: {x: "Hello, {name}"}
+                        },
+                        target: {
+                            prototype: "montage",
+                            localizations: {
+                                "binding": {
+                                    "_": "", // key is required
+                                    "_default": {"<-": "@source.value"},
+                                    "name": "someone"
+                                },
+                                "message": {
+                                    "_": "", // key is required
+                                    "_default": "Hello",
+                                }
+                            }
+                        }
+                    }, function(o) {
+                        objects = o;
+                    });
+
+                    serializer = Serializer.create().initWithRequire(require);
+                });
+
+                it("serializes localization bindings", function() {
+                    testSerializer({
+                        source: {
+                            value: {value: "Hello, {name}"}
+                        },
+                        target: {
+                            prototype: "montage",
+                            localizations: {
+                                "binding": {
+                                    "_": "", // key is required
+                                    "_default": {"<-": "@source.value"},
+                                    "name": "someone"
+                                }
+                            }
+                        }
+                    }, function(serialization) {
+                        expect(serialization).toBe('{"root":{"prototype":"montage/core/core[Montage]","properties":{},"localizations":{"value":{"<-":"@source.value"}}},"source":{"value": {"value": "Hello, {name}"}}}');
+                    });
+                });
+
+                it("serializes simple localization strings", function() {
+                    testSerializer({
+                        target: {
+                            prototype: "montage",
+                            localizations: {
+                                "message": {
+                                    "_": "hello", // key is required
+                                    "_default": "Hello"
+                                }
+                            }
+                        }
+                    }, function(serialization) {
+                        expect(serialization).toBe('{"root":{"prototype":"montage/core/core[Montage]","properties":{},"localizations":{"message": {"_": "hello","_default": "Hello"}}}');
+                    });
+                });
+            });
+
         });
 
         describe("localizer localizeObjects", function() {

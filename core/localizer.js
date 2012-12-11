@@ -42,7 +42,8 @@ var Montage = require("montage").Montage,
     MessageFormat = require("core/messageformat"),
     logger = require("core/logger").logger("localizer"),
     Deserializer = require("core/deserializer").Deserializer,
-    Promise = require("core/promise").Promise;
+    Promise = require("core/promise").Promise,
+    deserializeBindingToBindingDescriptor = require("core/event/binding").deserializeBindingToBindingDescriptor;
 
 // Add all locales to MessageFormat object
 MessageFormat.locale = require("core/messageformat-locale");
@@ -397,7 +398,7 @@ var Localizer = exports.Localizer = Montage.create(Montage, /** @lends module:mo
 
     // Caches the compiled functions from strings
     _compiledMessageCache: {
-        value: {}
+        value: Object.create(null)
     },
 
     /**
@@ -499,7 +500,7 @@ var z = hi();
     localizeAsync: {
         value: function(key, defaultMessage, defaultOnFail, callback) {
             var listener, deferred, promise, self = this;
-            defaultOnFail = (defaultOnFail === null) ? true : defaultOnFail;
+            defaultOnFail = (typeof defaultOnFail === "undefined") ? true : defaultOnFail;
 
             if (!this.messagesPromise) {
                 promise = Promise.resolve(this.localize(key, defaultMessage));
@@ -634,110 +635,172 @@ var defaultLocalizer = exports.defaultLocalizer = DefaultLocalizer.create().init
 exports.localize = defaultLocalizer.localize.bind(defaultLocalizer);
 
 /**
-    Stores variables needed for {@link MessageLocalizer}.
+    Stores data needed for {@link Message}.
 
-    When any of the properties in this object are set using setProperty (and
-    hence through a binding) {@link render} will be called.
+    When any of the properties in this object are set using setProperty (i.e.
+    through a binding) a change event will be dispatched.
 
-    @class module:montage/core/localizer.MessageVariables
+    Really this is a proxy, and can be replaced by one once they become
+    readily available.
+
+    @class module:montage/core/localizer.MessageData
     @extends module:montage/core/core.Montage
     @private
 */
-var MessageVariables = Montage.create(Montage, /** @lends module:montage/core/localizer.MessageVariables# */{
+var MessageData = Montage.create(Montage, /** @lends module:montage/core/localizer.MessageVariables# */{
     /**
         Initialize the object.
 
         @function
-        @param {MessageLocalizer} messageLocalizer
-        @returns {MessageVariables} The MessageVariables object it was called on
+        @param {Object} data Object with own properties to set on this object.
     */
     init: {
-        value: function(messageLocalizer) {
-            this._localizer = messageLocalizer;
+        value: function(data) {
+            for (var p in data) {
+                // adding this binding will call setProperty below which will
+                // add the PropertyChangeListener
+                Object.defineBinding(this, p, {
+                    boundObject: data,
+                    boundObjectPropertyPath: p,
+                    oneway: false
+                });
+            }
+
             return this;
         }
     },
 
     /**
-        The MessageLocalizer this object belongs to.
-        @type {MessageLocalizer}
-        @default null
-        @private
-    */
-    _localizer: {
-        value: null
-    },
+        Watch any properties set through bindings for changes.
 
-    /**
-        Handles all the message variable bindings.
-
-        If a property is set that looks like a variable for the message then
-        set it internally and re-render the message.
         @function
         @private
     */
     setProperty: {
         enumerable: false,
         value: function(path, value) {
+            // The same listener will only be registered once. It's faster to
+            // just register again than it would be to check for the existance
+            // of an existing listener.
+            this.addPropertyChangeListener(path, this);
+
             Object.setProperty.call(this, path, value);
-            this._localizer.render();
+        }
+    },
+
+    handleChange: {
+        value: function(event) {
+            this.dispatchEventNamed("change", true, false);
         }
     }
 });
 /**
-    <p>Provides an easy way to use bindings to localize a message.</p>
-
-    <p></p>
+    Tracks a message function and its data for changes in order to generate a
+    localized message.
 
     @class module:montage/core/localizer.MessageLocalizer
     @extends module:montage/core/core.Montage
 */
-var MessageLocalizer = exports.MessageLocalizer = Montage.create(Montage, /** @lends module:montage/core/localizer.MessageLocalizer# */ {
+var Message = exports.Message = Montage.create(Montage, /** @lends module:montage/core/localizer.MessageLocalizer# */ {
+
+    didCreate: {
+        value: function() {
+            this._data = MessageData.create();
+            this._data.addEventListener("change", this, false);
+        }
+    },
+
     /**
         Initialize the object.
 
         @function
-        @param {Function} messageFunction A function that takes an object argument
-                        mapping variables to values and returns a string. Usually
-                        the output of Localizer#localize.
-        @param {Array[String]} variables  Array of variable names that are
-        needed for the message. These properties must then be bound to.
-        @returns {MessageLocalizer} the MessageLocalizer it was called on
+        @param {string|Function} keyOrFunction A messageformat string or a
+        function that takes an object argument mapping variables to values and
+        returns a string. Usually the output of Localizer#localize.
+        @param {Object} data  Value for this data property.
+        @returns {Message} this.
     */
     init: {
-        value: function(messageFunction, variables) {
-            if (variables && variables.length !== 0) {
-                this.variables = MessageVariables.create().init(this);
-                for (var i = 0, len = variables.length; i < len; i++) {
-                    this.variables[variables[i]] = null;
-                }
-            }
-            this.messageFunction = messageFunction;
+        value: function(key, defaultMessage, data) {
+            if (key) this.key = key;
+            if (defaultMessage) this.defaultMessage = defaultMessage;
+            if (data) this.data = data;
+
             return this;
         }
     },
 
-    toString: {
-        value: function() {
-            return this._value;
+    _localizer: {
+        value: defaultLocalizer
+    },
+    localizer: {
+        get: function() {
+            return this._localizer;
+        },
+        set: function(value) {
+            if (this._localizer == value) {
+                return;
+            }
+            this._localizer = value;
+            this._resolveMessageFunction();
         }
     },
 
-    /**
-        The message localized with all variables replaced.
-        @type {String}
-        @default null
-    */
-    value: {
-        value: null,
-    },
-
-    _messageFunction: {
-        enumerable: false,
+    _key: {
         value: null
     },
     /**
-        A function that takes an object argument mapping variables to values
+     * A key for the default localizer to get the message function from.
+     * @type {string}
+     * @default null
+     */
+    key: {
+        get: function() {
+            return this._key;
+        },
+        set: function(value) {
+            if (this._key === value) {
+                return;
+            }
+            this._key = value;
+            this._resolveMessageFunction();
+        }
+    },
+
+    _defaultMessage: {
+        value: null
+    },
+    defaultMessage: {
+        get: function() {
+            return this._defaultMessage;
+        },
+        set: function(value) {
+            if (this._defaultMessage === value) {
+                return;
+            }
+            this._defaultMessage = value;
+            this._resolveMessageFunction();
+        }
+    },
+
+    _resolveMessageFunction: {
+        value: function() {
+            var self = this;
+            this._messageFunction = this._localizer.localizeAsync(
+                this._key,
+                this._defaultMessage
+            ).then(function(messageFunction) {
+                self._messageFunction = messageFunction;
+                self.handleChange();
+            }).done();
+        }
+    },
+
+    _messageFunction: {
+        value: function() {}
+    },
+    /**
+        A function that takes an object argument mapping data to values
         and returns a string. Usually the output of Localizer#localize.
 
         @type {Function}
@@ -748,114 +811,121 @@ var MessageLocalizer = exports.MessageLocalizer = Montage.create(Montage, /** @l
             return this._messageFunction;
         },
         set: function(value) {
-            if (this._messageFunction !== value) {
-                this._messageFunction = value;
-                this.render();
+            if (this._messageFunction === value) {
+                return;
             }
+            this._messageFunction = value;
+            this._key = null;
+            this._defaultMessage = null;
+            this.handleChange();
         }
     },
 
     /**
-        The variables needed for the {@link message}. When any of
-        the properties in this object are set using setProperty (and hence
-        through a binding) {@link render} will be called
+        The data needed for the message. Properties on this object can be
+        bound to.
 
-        @type {MessageVariables}
+        This object will be wrapped in a MessageData object to watch all
+        properties for changes so that the localized message can be updated.
+
+        @type {MessageData}
         @default null
     */
-    variables: {
+    _data: {
         value: null
     },
-
-    /**
-        Renders the {@link messageFunction} and {@link variables} to {@link value}.
-        @function
-    */
-    render: {
-        value: function() {
-            try {
-                this.value = this._messageFunction(this.variables);
-            } catch(e) {
-                console.error(e.message, this.variables, this._messageFunction.toString());
-            }
-        }
-    }
-});
-
-var Message = exports.Message = Montage.create(Montage, {
-
-    _message: {
-        value: null
-    },
-
-    _key: {
-        value: null
-    },
-    key: {
-
-    },
-
-    localizer: {
-        value: defaultLocalizer
-    },
-
-    _default: {
-        value: null
-    },
-    default: {
+    data: {
         get: function() {
-            return this._default;
+            return this._data;
         },
         set: function(value) {
-            if (value !== this._default) {
-                this._default = value;
-                if (this._message === null) {
-                    this._message = value;
-                }
+            if (this._data === value) {
+                return;
             }
+            if (this._data) {
+                this._data.removeEventListener("change", this);
+            }
+            this._data = MessageData.create().init(value);
+            this._data.addEventListener("change", this, false);
+            this.handleChange();
         }
     },
 
     _localized: {
         value: ""
     },
+    /**
+        The message localized with all variables replaced.
+        @type {string}
+        @default ""
+    */
     localized: {
-        depends: ["_localized"],
+        dependencies: ["_localized"],
         get: function() {
             return this._localized;
         }
-    }
+    },
 
+    setProperty: {
+        enumerable: false,
+        value: function(path, value) {
+            // If a binding to a data property has been set directly on this
+            // object, instead of on the data object, install a listener for
+            // the data object
+            if (path.indexOf("data.") === 0) {
+                this._data.addPropertyChangeListener(path.substring(5), this._data);
+            }
+            Object.setProperty.call(this, path, value);
+        }
+    },
+
+    /**
+     * Whenever there is a change set the localized property.
+     * @type {Function}
+     * @private
+     */
+    handleChange: {
+        value: function(event) {
+            if (this._messageFunction) {
+                this._localized = this._messageFunction(this._data);
+            }
+        }
+    }
 });
 
-var createMessageBinding = function(object, prop, variables, deserializer, messageFunction) {
-    if (!messageFunction) {
-        throw new Error("messageFunction required");
+var createMessageBinding = function(object, prop, key, defaultMessage, data, deserializer) {
+    var message = Message.create();
+
+    for (var d in data) {
+        if (typeof data[d] === "string") {
+            message.data[d] = data[d];
+        } else {
+            deserializeBindingToBindingDescriptor(data[d], deserializer);
+            Object.defineBinding(message.data, d, data[d]);
+        }
+
     }
 
-    // if the messageFunction has its own toString property, then it is a
-    // simple string and there's no point creating and bindings
-    if (messageFunction.hasOwnProperty("toString")) {
-        object[prop] = messageFunction();
-        return;
+    if (typeof key === "object") {
+        deserializeBindingToBindingDescriptor(key, deserializer);
+        Object.defineBinding(message, "key", key);
+    } else {
+        message.key = key;
     }
 
-    var messageLocalizer = MessageLocalizer.create().init(messageFunction, variables);
-
-    for (var variable in variables) {
-        var targetPath = variables[variable];
-        var binding = {};
-        var dotIndex = targetPath.indexOf(".");
-        binding.boundObject = deserializer.getObjectByLabel(targetPath.slice(1, dotIndex));
-        binding.boundObjectPropertyPath = targetPath.slice(dotIndex+1);
-        binding.oneway = true;
-        Object.defineBinding(messageLocalizer.variables, variable, binding);
+    if (typeof defaultMessage === "object") {
+        deserializeBindingToBindingDescriptor(defaultMessage, deserializer);
+        Object.defineBinding(message, "defaultMessage", defaultMessage);
+    } else {
+        message.defaultMessage = defaultMessage;
     }
 
     Object.defineBinding(object, prop, {
-        boundObject: messageLocalizer,
-        boundObjectPropertyPath: "value",
-        oneway: true
+        boundObject: message,
+        boundObjectPropertyPath: "localized",
+        oneway: true,
+        serializable: false,
+        localization: true
     });
 };
 
@@ -863,8 +933,7 @@ Deserializer.defineDeserializationUnit("localizations", function(object, propert
     for (var prop in properties) {
         var desc = properties[prop],
             key,
-            defaultMessage,
-            variables;
+            defaultMessage;
 
         if (!(KEY_KEY in desc)) {
             console.error("localized property '" + prop + "' must contain a key property (" + KEY_KEY + "), in ", properties[prop]);
@@ -879,10 +948,6 @@ Deserializer.defineDeserializationUnit("localizations", function(object, propert
         defaultMessage = desc[DEFAULT_MESSAGE_KEY];
         delete desc[DEFAULT_MESSAGE_KEY];
 
-        (function(prop, variables, key) {
-            defaultLocalizer.localizeAsync(key, defaultMessage).then(function(messageFunction) {
-                createMessageBinding(object, prop, variables, deserializer, messageFunction);
-            });
-        }(prop, desc, key));
+        createMessageBinding(object, prop, key, defaultMessage, desc, deserializer);
     }
 });
