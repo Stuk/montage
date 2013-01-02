@@ -63,25 +63,7 @@ var testPage = TestPageLoader.queueTest("fallback", {directory: module.directory
         var serializer = Serializer.create().initWithRequire(require),
             objects;
 
-        testDeserializer({
-            source: {
-                value: {x: "Hello, {name}"}
-            },
-            target: {
-                prototype: "montage",
-                localizations: {
-                    "binding": {
-                        "_": "", // key is required
-                        "_default": {"<-": "@source.value"},
-                        "name": "someone"
-                    },
-                    "message": {
-                        "_": "", // key is required
-                        "_default": "Hello",
-                    }
-                }
-            }
-        }, function(o) {
+        testDeserializer(object, function(o) {
             objects = o;
             waits(10); // wait for messages to be resolved
             runs(function() {
@@ -95,6 +77,39 @@ var testPage = TestPageLoader.queueTest("fallback", {directory: module.directory
         describe("Message", function() {
             it("localizes the message", function() {
                 expect(test.message.localized).toBe("Welcome to the site, World");
+            });
+
+            it("does not serialize the default localizer", function() {
+                testSerializer({
+                    target: {
+                        prototype: "montage/core/localizer[Message]",
+                        properties: {
+                            key: "hello"
+                        }
+                    }
+                }, function(serialization) {
+                    expect(serialization).not.toContain("localizer");
+                });
+            });
+
+            it("serializes an non-default localizer", function() {
+                testSerializer({
+                    localizer: {
+                        prototype: "montage/core/localizer",
+                        properties: {
+                            locale: "en-x-test"
+                        }
+                    },
+                    target: {
+                        prototype: "montage/core/localizer[Message]",
+                        properties: {
+                            key: "hello",
+                            localizer: {"@": "localizer"}
+                        }
+                    }
+                }, function(serialization) {
+                    expect(serialization).toBe('{"localizer":{"prototype":"montage/core/localizer","properties":{"locale":"en-x-test"}},"root":{"value":{"key":"hello","localizer":{"@":"localizer"}}}}');
+                });
             });
         });
 
@@ -142,7 +157,6 @@ var testPage = TestPageLoader.queueTest("fallback", {directory: module.directory
                 }, function(objects) {
                     waits(10); // wait for promise to be resolved
                     runs(function() {
-                        // debugger;
                         expect(objects.target.value).toBe("Hello, someone");
                         objects.source.value = "Goodbye, {name}";
                     });
@@ -185,23 +199,19 @@ var testPage = TestPageLoader.queueTest("fallback", {directory: module.directory
                     serializer = Serializer.create().initWithRequire(require);
                 });
 
-                it("serializes localization bindings", function() {
+                it("doesn't create a localizations block when there are none", function() {
                     testSerializer({
                         source: {
-                            value: {value: "Hello, {name}"}
+                            value: {value: "Hello", identifier: "source"}
                         },
                         target: {
                             prototype: "montage",
-                            localizations: {
-                                "binding": {
-                                    "_": "", // key is required
-                                    "_default": {"<-": "@source.value"},
-                                    "name": "someone"
-                                }
+                            bindings: {
+                                "test": {"<-": "@source.value"}
                             }
                         }
                     }, function(serialization) {
-                        expect(serialization).toBe('{"root":{"prototype":"montage/core/core[Montage]","properties":{},"localizations":{"value":{"<-":"@source.value"}}},"source":{"value": {"value": "Hello, {name}"}}}');
+                        expect(serialization).not.toContain("localizations");
                     });
                 });
 
@@ -217,7 +227,47 @@ var testPage = TestPageLoader.queueTest("fallback", {directory: module.directory
                             }
                         }
                     }, function(serialization) {
-                        expect(serialization).toBe('{"root":{"prototype":"montage/core/core[Montage]","properties":{},"localizations":{"message": {"_": "hello","_default": "Hello"}}}');
+                        expect(serialization).toBe('{"root":{"prototype":"montage/core/core[Montage]","properties":{},"localizations":{"message":{"_":"hello","_default":"Hello"}}}}');
+                    });
+                });
+
+                it("serializes default message binding", function() {
+                    testSerializer({
+                        source: {
+                            value: {value: "Hello, {name}", identifier: "source"}
+                        },
+                        target: {
+                            prototype: "montage",
+                            localizations: {
+                                "binding": {
+                                    "_": "", // key is required
+                                    "_default": {"<-": "@source.value"},
+                                    "name": "someone"
+                                }
+                            }
+                        }
+                    }, function(serialization) {
+                        expect(serialization).toBe('{"root":{"prototype":"montage/core/core[Montage]","properties":{},"localizations":{"binding":{"_":"","_default":{"<-":"@source.value"},"name":"someone"}}},"source":{}}');
+                    });
+                });
+
+                it("serializes data binding", function() {
+                    testSerializer({
+                        source: {
+                            value: {value: "World", identifier: "source"}
+                        },
+                        target: {
+                            prototype: "montage",
+                            localizations: {
+                                "binding": {
+                                    "_": "", // key is required
+                                    "_default": "Hello, {name}",
+                                    "name": {"<-": "@source.value"}
+                                }
+                            }
+                        }
+                    }, function(serialization) {
+                        expect(serialization).toBe('{"root":{"prototype":"montage/core/core[Montage]","properties":{},"localizations":{"binding":{"_":"","_default":"Hello, {name}","name":{"<-":"@source.value"}}}},"source":{}}');
                     });
                 });
             });

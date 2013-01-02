@@ -41,6 +41,7 @@ POSSIBILITY OF SUCH DAMAGE.
 var Montage = require("montage").Montage,
     MessageFormat = require("core/messageformat"),
     logger = require("core/logger").logger("localizer"),
+    Serializer = require("core/serializer").Serializer,
     Deserializer = require("core/deserializer").Deserializer,
     Promise = require("core/promise").Promise,
     deserializeBindingToBindingDescriptor = require("core/event/binding").deserializeBindingToBindingDescriptor;
@@ -109,6 +110,7 @@ var Localizer = exports.Localizer = Montage.create(Montage, /** @lends module:mo
         @default null
     */
     messageFormat: {
+        serializable: false,
         value: null
     },
 
@@ -142,6 +144,7 @@ var Localizer = exports.Localizer = Montage.create(Montage, /** @lends module:mo
         @default null
     */
     messagesPromise: {
+        serializable: false,
         value: null
     },
 
@@ -209,6 +212,7 @@ var Localizer = exports.Localizer = Montage.create(Montage, /** @lends module:mo
         @default global require | null
     */
     require: {
+        serializable: false,
         get: function() {
             return this._require;
         },
@@ -655,6 +659,7 @@ var MessageData = Montage.create(Montage, /** @lends module:montage/core/localiz
         @param {Object} data Object with own properties to set on this object.
     */
     init: {
+        enumerable: false,
         value: function(data) {
             for (var p in data) {
                 // adding this binding will call setProperty below which will
@@ -689,6 +694,7 @@ var MessageData = Montage.create(Montage, /** @lends module:montage/core/localiz
     },
 
     handleChange: {
+        enumerable: false,
         value: function(event) {
             this.dispatchEventNamed("change", true, false);
         }
@@ -786,7 +792,7 @@ var Message = exports.Message = Montage.create(Montage, /** @lends module:montag
     _resolveMessageFunction: {
         value: function() {
             var self = this;
-            this._messageFunction = this._localizer.localizeAsync(
+            this._localizer.localizeAsync(
                 this._key,
                 this._defaultMessage
             ).then(function(messageFunction) {
@@ -809,15 +815,6 @@ var Message = exports.Message = Montage.create(Montage, /** @lends module:montag
     messageFunction: {
         get: function() {
             return this._messageFunction;
-        },
-        set: function(value) {
-            if (this._messageFunction === value) {
-                return;
-            }
-            this._messageFunction = value;
-            this._key = null;
-            this._defaultMessage = null;
-            this.handleChange();
         }
     },
 
@@ -890,7 +887,69 @@ var Message = exports.Message = Montage.create(Montage, /** @lends module:montag
                 this._localized = this._messageFunction(this._data);
             }
         }
+    },
+
+    serializeSelf: {
+        value: function(serializer) {
+            var result = {
+                _bindingDescriptors: this._bindingDescriptors
+            };
+
+            // don't serialize the message function
+            result.key = this._key;
+            result.defaultMessage = this._defaultMessage;
+
+            // only serialize localizer if it isn't the default one
+            if (this._localizer !== defaultLocalizer) {
+                result.localizer = this._localizer;
+            }
+
+            return result;
+        }
+    },
+
+    serializeForLocalizations: {
+        value: function(serializer) {
+            var result = {};
+
+            var bindings = this._bindingDescriptors;
+
+            if (bindings && bindings.key) {
+                result[KEY_KEY] = bindings.key;
+            } else {
+                result[KEY_KEY] = this._key;
+            }
+
+            if (bindings && bindings.defaultMessage) {
+                result[DEFAULT_MESSAGE_KEY] = bindings.defaultMessage;
+            } else {
+                result[DEFAULT_MESSAGE_KEY] = this._defaultMessage;
+            }
+
+            var dataBindings = this._data._bindingDescriptors;
+
+            // NOTE: Can't use `Montage.getSerializablePropertyNames(this._data)`
+            // because the properties we want to serialize are not defined
+            // using `Montage.defineProperty`, and so don't have
+            // `serializable: true` as part of the property descriptor.
+            for (var p in this._data) {
+                if (this._data.hasOwnProperty(p) &&
+                    (!dataBindings || !dataBindings[p])
+                ) {
+                    result[p] = this._data[p];
+                }
+            }
+
+            // Loop through bindings seperately in case the bound properties
+            // haven't been set on the data object yet.
+            for (var b in dataBindings) {
+                result[b] = dataBindings[b];
+            }
+
+            return result;
+        }
     }
+
 });
 
 var createMessageBinding = function(object, prop, key, defaultMessage, data, deserializer) {
@@ -924,10 +983,28 @@ var createMessageBinding = function(object, prop, key, defaultMessage, data, des
         boundObject: message,
         boundObjectPropertyPath: "localized",
         oneway: true,
-        serializable: false,
-        localization: true
+        serializable: false
     });
 };
+
+Serializer.defineSerializationUnit("localizations", function(object) {
+    var bindingDescriptors = object._bindingDescriptors;
+
+    if (bindingDescriptors) {
+        var result;
+        for (var prop in bindingDescriptors) {
+            var desc = bindingDescriptors[prop];
+            if (Message.isPrototypeOf(desc.boundObject)) {
+                if (!result) {
+                    result = {};
+                }
+                var message = desc.boundObject;
+                result[prop] = message.serializeForLocalizations();
+            }
+        }
+        return result;
+    }
+});
 
 Deserializer.defineDeserializationUnit("localizations", function(object, properties, deserializer) {
     for (var prop in properties) {
