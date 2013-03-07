@@ -935,6 +935,9 @@ var Repetition = exports.Repetition = Montage.create(Component, {
                         self.addChildComponent(component);
                     });
                     part.loadComponentTree().then(function() {
+                        for (var i = 0, childComponent; (childComponent = part.childComponents[i]); i++) {
+                            childComponent.needsDraw = true;
+                        }
                         self.didCreateIteration(iteration);
                     }).done();
                     self.currentIteration = null;
