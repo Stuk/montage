@@ -1013,6 +1013,9 @@ var Component = exports.Component = Montage.create(Montage,/** @lends module:mon
 
     _setupTemplateObjects: {
         value: function(objects) {
+            if (this.templateObjects) {
+                return;
+            }
             var descriptor = this._templateObjectDescriptor,
                 templateObjects = Object.create(null);
 
