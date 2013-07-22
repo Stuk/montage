@@ -237,5 +237,16 @@ describe("meta/blueprint-spec", function () {
             });
         });
 
+        describe("create new blueprint", function () {
+            var ComponentBlueprintTest1 = require("meta/component-blueprint-test/component-blueprint-test-1.reel").ComponentBlueprintTest1;
+            it("has the correct module id for the parent", function () {
+                return Blueprint.createDefaultBlueprintForObject(ComponentBlueprintTest1)
+                .then(function (blueprint) {
+                    expect(blueprint.parent.blueprintInstanceModuleId).toEqual("montage/ui/component.meta");
+                });
+            });
+
+        });
+
     });
 });

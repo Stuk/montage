@@ -17,7 +17,7 @@ var PropertyBlueprint = require("core/meta/property-blueprint").PropertyBlueprin
 var AssociationBlueprint = require("core/meta/association-blueprint").AssociationBlueprint;
 var DerivedPropertyBlueprint = require("core/meta/derived-property-blueprint").DerivedPropertyBlueprint;
 var EventBlueprint = require("core/meta/event-blueprint").EventBlueprint;
-var PropertyValidationRule = require("core/meta/validation-rule").PropertyValidationRule;
+// var PropertyValidationRule = require("core/meta/validation-rule").PropertyValidationRule;
 
 var logger = require("core/logger").logger("blueprint");
 
